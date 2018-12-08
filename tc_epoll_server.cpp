@@ -25,22 +25,8 @@ namespace tars
 
 NetThread::NetThread()
 {
-	//建立用于通知和关闭的socket
-    int iSocketType = SOCK_STREAM;
-    int iDomain = AF_INET;
-
-    _shutdown_sock = socket(iDomain, iSocketType, 0);
-    _notify_sock = socket(iDomain, iSocketType, 0);
-	
-    if(_shutdown_sock < 0)
-    {
-        cout<<"_shutdown_sock  invalid"<<endl;
-    }
-
-    if(_notify_sock < 0)
-    {
-        cout<<"_notify_sock invalid"<<endl;
-    }
+	_shutdown.createSocket();
+	_notify.createSocket();
 
 	_response.response="";
 	_response.uid = 0;
@@ -55,119 +41,23 @@ int NetThread::bind(string& ip, int& port)
 	//建立server端接收请求用的socket
 	//socket-->bind-->listen
 
-    int iSocketType = SOCK_STREAM;
-    int iDomain = AF_INET;
-
-    _sock = socket(iDomain, iSocketType, 0);
+	int type = AF_INET;
 	
-    if(_sock < 0)
-    {
-        cout<<"bind _sock invalid"<<endl;
-    }
+	_bind_listen.createSocket(SOCK_STREAM, type);
 
-    struct sockaddr_in bindAddr;
-	
-    bzero(&bindAddr, sizeof(bindAddr));
-	
-    bindAddr.sin_family   = iDomain;
-    bindAddr.sin_port     = htons(port);
+	_bind_listen.bind(ip,port);
 
-    parseAddr(ip, bindAddr.sin_addr);	
+    _bind_listen.listen(1024);
 
-    //如果服务器终止后,服务器可以第二次快速启动而不用等待一段时间
-    int iReuseAddr = 1;
+	cout<<"server alreay listen fd is "<<_bind_listen.getfd()<<endl;
 
-    setsockopt(_sock, SOL_SOCKET, SO_REUSEADDR, (const void *)&iReuseAddr, sizeof(int));
-	
-    if(::bind(_sock, (struct sockaddr *)(&bindAddr), sizeof(bindAddr)) < 0)
-    {
-        cout<<"bind error"<<endl;
-    }
+    _bind_listen.setKeepAlive();
+    _bind_listen.setTcpNoDelay();
+    //不要设置close wait否则http服务回包主动关闭连接会有问题
+    _bind_listen.setNoCloseWait();
+	_bind_listen.setblock(false);
 
-    cout<<"server already bind fd is "<<_sock<<endl;
-
-    int iConnBackLog = 1024;	
-    if (::listen(_sock, iConnBackLog) < 0)
-    {
-        cout<<"listen error"<<endl;
-    }
-	
-    cout<<"server alreay listen fd is "<<_sock<<endl;
-
-    int flag = 1;
-    if(setsockopt(_sock, SOL_SOCKET, SO_KEEPALIVE, (char*)&flag, int(sizeof(int))) == -1)
-    {
-        cout<<"setKeepAlive] error"<<endl;
-    }
-
-    flag=1;
-	if(setsockopt(_sock, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, int(sizeof(int))) == -1)
-	{
-		cout<<"[TC_Socket::setTcpNoDelay] error"<<endl;
-	}
-
-	linger stLinger;
-	stLinger.l_onoff = 1;  //在close socket调用后, 但是还有数据没发送完毕的时候容许逗留
-	stLinger.l_linger = 0; //容许逗留的时间为0秒
-
-	if(setsockopt(_sock, SOL_SOCKET, SO_LINGER, (const void *)&stLinger, sizeof(linger)) == -1)
-	{
-		cout<<"[TC_Socket::setNoCloseWait] error"<<endl;
-	}	
-
-	//设置为非阻塞
-	int val = 0;
-	bool bBlock = false;
-
-	if ((val = fcntl(_sock, F_GETFL, 0)) == -1)
-	{
-		cout<<"[TC_Socket::setblock] fcntl [F_GETFL] error"<<endl;
-	}
-
-	if(!bBlock)
-	{
-		val |= O_NONBLOCK;
-	}
-	else
-	{
-		val &= ~O_NONBLOCK;
-	}
-
-	if (fcntl(_sock, F_SETFL, val) == -1)
-	{
-		cout<<" fcntl nonblock error"<<endl;
-	}
-
-
-	return _sock;
-}
-
-void NetThread::parseAddr(const string &sAddr, struct in_addr &stSinAddr)
-{
-	//将点分十进制转为二进制整数
-	int iRet = inet_pton(AF_INET, sAddr.c_str(), &stSinAddr);
-	if(iRet < 0)
-	{
-		cout<<"parseAddr iRet error"<<endl;
-	}
-	else if(iRet == 0)
-	{
-		struct hostent stHostent;
-		struct hostent *pstHostent;
-		char buf[2048] = "\0";
-		int iError;
-
-		gethostbyname_r(sAddr.c_str(), &stHostent, buf, sizeof(buf), &pstHostent, &iError);
-
-		if (pstHostent == NULL)
-		{
-			cout<<"gethostbyname_r error! :"<<endl;
-		}
-		else
-		{
-			stSinAddr = *(struct in_addr *) pstHostent->h_addr;
-		}	
-	}
+	return _bind_listen.getfd();
 }
 
 void NetThread::createEpoll(uint32_t iIndex)
@@ -176,11 +66,11 @@ void NetThread::createEpoll(uint32_t iIndex)
 	
     _epoller.create(10240);
 	
-    _epoller.add(_shutdown_sock, H64(ET_CLOSE), EPOLLIN);
+    _epoller.add(_shutdown.getfd(), H64(ET_CLOSE), EPOLLIN);
     
-    _epoller.add(_notify_sock, H64(ET_NOTIFY), EPOLLIN);	
+    _epoller.add(_notify.getfd(), H64(ET_NOTIFY), EPOLLIN);	
 
-	_epoller.add(_sock, H64(ET_LISTEN) | _sock, EPOLLIN);	
+	_epoller.add(_bind_listen.getfd(), H64(ET_LISTEN) | _bind_listen.getfd(), EPOLLIN);	
 
 	for(uint32_t i = 1; i <= _total; i++)
 	{
@@ -245,71 +135,38 @@ bool NetThread::accept(int fd)
 
 	socklen_t iSockAddrSize = sizeof(sockaddr_in);	
 
-	int iifd;
+	TC_Socket cs;
+    cs.setOwner(false);
 
-	while((iifd = ::accept(_sock, (struct sockaddr *) &stSockAddr, &iSockAddrSize)) < 0 && errno == EINTR);
+    //接收连接
+    TC_Socket s;
+    s.init(fd, false, AF_INET);
 
-	cout<<"server accept successful fd is "<<iifd<<endl;
-	
-	if(iifd > 0)
-	{
+	int iRetCode = s.accept(cs, (struct sockaddr *) &stSockAddr, iSockAddrSize);
+
+	if (iRetCode > 0)
+    {
 		string  ip;
-		
-		uint16_t port;
 
-		char sAddr[INET_ADDRSTRLEN] = "\0";
+        uint16_t port;
 
-		struct sockaddr_in *p = (struct sockaddr_in *)&stSockAddr;
+        char sAddr[INET_ADDRSTRLEN] = "\0";
 
-		inet_ntop(AF_INET, &p->sin_addr, sAddr, sizeof(sAddr));
+        struct sockaddr_in *p = (struct sockaddr_in *)&stSockAddr;
 
-		ip      = sAddr;
-		port    = ntohs(p->sin_port);
+        inet_ntop(AF_INET, &p->sin_addr, sAddr, sizeof(sAddr));
 
-		//setblock
-		int val = 0;
-		int bBlock = false;
-		if((val = fcntl(iifd, F_GETFL, 0)) == -1)	
-		{
-			cout<<"F_GETFL error"<<endl;
-		}	
-		
-		if(!bBlock)
-		{
-			val |= O_NONBLOCK;
-		}
-		else
-		{
-			val &= ~O_NONBLOCK;
-		}
+        ip      = sAddr;
+        port    = ntohs(p->sin_port);
 
-		if(fcntl(iifd, F_SETFL, val) == -1)
-		{
-			cout<<"F_SETFL error"<<endl;
-		}
+		cout<<"accept ip is "<<ip<<" port is "<<port<<endl;
 
-		//keepAlive
-		int flag = 1;
-        if(setsockopt(iifd, SOL_SOCKET, SO_KEEPALIVE, (char*)&flag, int(sizeof(int))) == -1)
-		{
-			cout<<"[TC_Socket::setKeepAlive] error"<<endl;
-		}
 
-		//nodelay
-		if(setsockopt(iifd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, int(sizeof(int))) == -1)
-		{
-			cout<<"[TC_Socket::setTcpNoDelay] error"<<endl;
-		}
+		cs.setblock(false);
+        cs.setKeepAlive();
+        cs.setTcpNoDelay();
+        cs.setCloseWaitDefault();
 
-		//closeWait
-		linger stLinger;
-		stLinger.l_onoff  = 0;
-		stLinger.l_linger = 0;
-
-		if(setsockopt(iifd, SOL_SOCKET, SO_LINGER, (const void *)&stLinger, sizeof(linger)) == -1)
-		{
-			cout<<"[TC_Socket::setCloseWaitDefault] error"<<endl;
-		}
 
 		uint32_t uid = _free.front();
 
@@ -317,11 +174,11 @@ bool NetThread::accept(int fd)
 
 		--_free_size;
 
-		//保存connectid
-		_listen_connect_id[uid] = iifd;	
+		_listen_connect_id[uid] = cs.getfd();	
 
-		//注册到epoll模型
-		_epoller.add(iifd, uid, EPOLLIN | EPOLLOUT);
+		cout<<"server accept successful fd is "<<cs.getfd()<<endl;
+
+		_epoller.add(cs.getfd(), uid, EPOLLIN | EPOLLOUT);
 
 	}
 	else
@@ -332,6 +189,7 @@ bool NetThread::accept(int fd)
 		}
 		return true;
 	}
+
 	return true;
 }
 
@@ -384,7 +242,7 @@ void NetThread::processNet(const epoll_event &ev)
 			_response.response = "hello";
 			_response.uid = uid;
 			
-			_epoller.mod(_notify_sock, H64(ET_NOTIFY), EPOLLOUT);
+			_epoller.mod(_notify.getfd(), H64(ET_NOTIFY), EPOLLOUT);
 		}
 	}
 
@@ -405,8 +263,8 @@ void NetThread::processPipe()
 
 	int bytes = ::send(fd, _response.response.c_str(), _response.response.size(), 0);
 
-	cout<<"send byte is "<<bytes<<endl;
-	cout<<"response is "<<_response.response<<endl;
+	cout<<"send byte is "<<bytes<<" response is "<<_response.response<<endl;
+
 }
 
 
