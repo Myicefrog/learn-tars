@@ -7,14 +7,24 @@ using namespace tars;
 int main()
 {
 
-	NetThread* vNetThread = new NetThread();
-	string ip = "127.0.0.1";
-	int port = 9877;
-	vNetThread->bind(ip,port);
-	vNetThread->createEpoll(1);
-	vNetThread->run();
+    TC_EpollServer*  _epollServer = new TC_EpollServer();
 
-	delete vNetThread;
-	return 0;
+    TC_EpollServer::NetThread* vNetThread = _epollServer->getNetThread();
+
+    string ip = "127.0.0.1";
+
+    int port = 9877;
+
+    vNetThread->bind(ip,port);
+
+    vNetThread->createEpoll(1);
+    
+    TC_EpollServer::Handle handle;
+
+    handle.setEpollServer(_epollServer);   
+
+    handle.start();
+
+    vNetThread->run();
+    return 0;
 }
-

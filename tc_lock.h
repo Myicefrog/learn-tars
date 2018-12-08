@@ -4,11 +4,20 @@
 #include <string>
 #include <stdexcept>
 #include <cerrno>
+#include "tc_ex.h"
 
 using namespace std;
 
 namespace tars
 {
+
+struct TC_Lock_Exception : public TC_Exception
+{
+    TC_Lock_Exception(const string &buffer) : TC_Exception(buffer){};
+    TC_Lock_Exception(const string &buffer, int err) : TC_Exception(buffer, err){};
+    ~TC_Lock_Exception() throw() {};
+};
+
 
 template <typename T>
 class TC_LockT
@@ -33,7 +42,7 @@ public:
     {
         if (_acquired)
         {
-            cout<<"throw TC_Lock_Exception("<<"thread has locked!"<<endl;
+            throw TC_Lock_Exception("thread has locked!");
         }
         _mutex.lock();
         _acquired = true;
@@ -93,4 +102,4 @@ public:
 
 }
 
-#endif;
+#endif

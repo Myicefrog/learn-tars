@@ -18,19 +18,19 @@ TC_ThreadCond::TC_ThreadCond()
     rc = pthread_condattr_init(&attr);
     if(rc != 0)
     {
-        cout<<"[TC_ThreadCond::TC_ThreadCond] pthread_condattr_init error"<<endl;
+        throw TC_ThreadCond_Exception("[TC_ThreadCond::TC_ThreadCond] pthread_condattr_init error", errno);
     }
 
     rc = pthread_cond_init(&_cond, &attr);
     if(rc != 0)
     {
-        cout<<"[TC_ThreadCond::TC_ThreadCond] pthread_cond_init error"<<endl;
+        throw TC_ThreadCond_Exception("[TC_ThreadCond::TC_ThreadCond] pthread_cond_init error", errno);
     }
 
     rc = pthread_condattr_destroy(&attr);
     if(rc != 0)
     {
-        cout<<"[TC_ThreadCond::TC_ThreadCond] pthread_condattr_destroy error"<<endl;
+        throw TC_ThreadCond_Exception("[TC_ThreadCond::TC_ThreadCond] pthread_condattr_destroy error", errno);
     }
 }
 
@@ -51,7 +51,7 @@ void TC_ThreadCond::signal()
     int rc = pthread_cond_signal(&_cond);
     if(rc != 0)
     {
-        cout<<"[TC_ThreadCond::signal] pthread_cond_signal error"<<endl;
+        throw TC_ThreadCond_Exception("[TC_ThreadCond::signal] pthread_cond_signal error", errno);
     }
 }
 
@@ -60,7 +60,7 @@ void TC_ThreadCond::broadcast()
     int rc = pthread_cond_broadcast(&_cond);
     if(rc != 0)
     {
-        cout<<"[TC_ThreadCond::broadcast] pthread_cond_broadcast error"<<endl;
+        throw TC_ThreadCond_Exception("[TC_ThreadCond::broadcast] pthread_cond_broadcast error", errno);
     }
 }
 

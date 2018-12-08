@@ -3,6 +3,7 @@
 
 #include "tc_thread_mutex.h"
 #include "tc_thread_cond.h"
+#include "tc_lock.h"
 
 namespace tars
 {
@@ -47,7 +48,6 @@ public:
 
     void wait() const
     {
-    	cout<<"TC_Monitor wait"<<endl;
         notifyImpl(_nnotify);
 
         try

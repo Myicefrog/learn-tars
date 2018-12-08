@@ -6,6 +6,7 @@
 #include <iostream>
 #include <assert.h>
 #include <pthread.h>
+#include "tc_ex.h"
 
 using namespace std;
 
@@ -14,6 +15,14 @@ namespace tars
 
 //前置声明
 class TC_ThreadMutex;
+
+struct TC_ThreadCond_Exception : public TC_Exception
+{
+    TC_ThreadCond_Exception(const string &buffer) : TC_Exception(buffer){};
+    TC_ThreadCond_Exception(const string &buffer, int err) : TC_Exception(buffer, err){};
+    ~TC_ThreadCond_Exception() throw() {};
+};
+
 
 class TC_ThreadCond
 {
@@ -36,9 +45,11 @@ public:
         	mutex.count(c);
         	if(rc != 0)
         	{
-            		cout<<"[TC_ThreadCond::wait] pthread_cond_wait error"<<endl;
+                    throw TC_ThreadCond_Exception("[TC_ThreadCond::wait] pthread_cond_wait error", errno);
         	}
-    	}
+  
+
+  	}
 
 
 	template<typename Mutex>
@@ -54,11 +65,11 @@ public:
 
         	if(rc != 0)
         	{
+                        //cout<<"pthread_cond_timedwait rc is "<<rc<<endl;
             		if(rc != ETIMEDOUT)
             		{
-                		cout<<"[TC_ThreadCond::timedWait] pthread_cond_timedwait error"<<endl;
-            		}
-
+                            throw TC_ThreadCond_Exception("[TC_ThreadCond::timedWait] pthread_cond_timedwait error", errno);
+                        }
             		return false;
         	}
         	return true;
