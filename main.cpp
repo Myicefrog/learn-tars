@@ -7,7 +7,7 @@ using namespace tars;
 int main()
 {
 
-    TC_EpollServer*  _epollServer = new TC_EpollServer();
+	TC_EpollServerPtr _epollServer = make_shared<TC_EpollServer>();
 
     TC_EpollServer::NetThread* vNetThread = _epollServer->getNetThread();
 
@@ -15,16 +15,21 @@ int main()
 
     int port = 9877;
 
-    vNetThread->bind(ip,port);
+	TC_EpollServer::BindAdapterPtr lsPtr = make_shared<TC_EpollServer::BindAdapter>(_epollServer.get());
+
+    lsPtr->setEndpoint(ip,port);
+
+    _epollServer->bind(lsPtr);
 
     vNetThread->createEpoll(1);
     
     TC_EpollServer::Handle handle;
 
-    handle.setEpollServer(_epollServer);   
+    handle.setEpollServer(_epollServer.get());   
 
     handle.start();
 
     vNetThread->run();
+
     return 0;
 }

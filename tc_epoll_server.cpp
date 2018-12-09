@@ -39,6 +39,15 @@ void TC_EpollServer::send(unsigned int uid, const string &s, const string &ip, u
 
 }
 
+int  TC_EpollServer::bind(TC_EpollServer::BindAdapterPtr& lsPtr)
+{
+    int iRet = 0;
+
+    iRet = _netThreads->bind(lsPtr);
+
+    return iRet;
+}
+
 TC_EpollServer::NetThread::NetThread(TC_EpollServer *epollServer)
 : _epollServer(epollServer)
 {
@@ -53,31 +62,35 @@ TC_EpollServer::NetThread::~NetThread()
 {
 }
 
-int  TC_EpollServer::NetThread::bind(string& ip, int& port)
+int  TC_EpollServer::NetThread::bind(BindAdapterPtr &lsPtr)
 {
-    //建立server端接收请求用的socket
-    //socket-->bind-->listen
+    const TC_Endpoint &ep = lsPtr->getEndpoint();
 
-	int type = AF_INET;
-	
-	_bind_listen.createSocket(SOCK_STREAM, type);
+    TC_Socket& s = lsPtr->getSocket();
 
-	_bind_listen.bind(ip,port);
+    bind(ep, s);
 
-    _bind_listen.listen(1024);
+    _listeners[s.getfd()] = lsPtr;
 
-    cout<<"server alreay listen fd is "<<_bind_listen.getfd()<<endl;
-
-    _bind_listen.setKeepAlive();
-    _bind_listen.setTcpNoDelay();
-    //不要设置close wait否则http服务回包主动关闭连接会有问题
-    _bind_listen.setNoCloseWait();
-    _bind_listen.setblock(false);
-
-	return _bind_listen.getfd();
-
+    return s.getfd();
 }
 
+void TC_EpollServer::NetThread::bind(const TC_Endpoint &ep, TC_Socket &s)
+{
+    int type = AF_INET;
+
+    s.createSocket(SOCK_STREAM, type);
+    
+    s.bind(ep.getHost(), ep.getPort());
+
+    s.listen(1024);
+    s.setKeepAlive();
+    s.setTcpNoDelay();
+    //不要设置close wait否则http服务回包主动关闭连接会有问题
+    s.setNoCloseWait();
+
+    s.setblock(false);
+}
 
 void TC_EpollServer::NetThread::createEpoll(uint32_t iIndex)
 {
@@ -90,6 +103,11 @@ void TC_EpollServer::NetThread::createEpoll(uint32_t iIndex)
 	_epoller.add(_notify.getfd(), H64(ET_NOTIFY), EPOLLIN);
 
 	_epoller.add(_bind_listen.getfd(), H64(ET_LISTEN) | _bind_listen.getfd(), EPOLLIN);	
+
+    for (const auto& kv : _listeners)
+    {
+        _epoller.add(kv.first, H64(ET_LISTEN) | kv.first, EPOLLIN);	
+    }
 
 	for(uint32_t i = 1; i <= _total; i++)
 	{
@@ -450,6 +468,71 @@ void TC_EpollServer::NetThread::insertRecvQueue(const recv_queue::queue_type &vt
     TC_ThreadLock::Lock lock(monitor);
 
     monitor.notify();
+}
+
+TC_EpollServer::BindAdapter::BindAdapter(TC_EpollServer *pEpollServer)
+:_pEpollServer(pEpollServer)
+{
+}
+
+TC_EpollServer::BindAdapter::~BindAdapter()
+{
+//_pEpollServer->terminate();
+
+}
+
+void TC_EpollServer::BindAdapter::insertRecvQueue(const recv_queue::queue_type &vtRecvData, bool bPushBack)
+{
+    {
+        if (bPushBack)
+        {
+            _rbuffer.push_back(vtRecvData);
+        }
+        else
+        {
+            _rbuffer.push_front(vtRecvData);
+        }
+    }
+
+    TC_ThreadLock::Lock lock(monitor);
+
+    monitor.notify();
+}
+
+bool TC_EpollServer::BindAdapter::waitForRecvQueue(tagRecvData* &recv, uint32_t iWaitTime)
+{
+    bool bRet = false;
+
+    bRet = _rbuffer.pop_front(recv, iWaitTime);
+
+    if(!bRet)
+    {
+        return bRet;
+    }
+
+    return bRet;
+}
+
+TC_EpollServer* TC_EpollServer::BindAdapter::getEpollServer()
+{
+    return _pEpollServer;
+}
+
+void TC_EpollServer::BindAdapter::setEndpoint(const string &str, const int &port)
+{
+    TC_ThreadLock::Lock lock(*this);
+
+    _ep.init(str, port);
+}
+
+TC_Endpoint TC_EpollServer::BindAdapter::getEndpoint() const
+{
+    return _ep;
+}
+
+TC_Socket& TC_EpollServer::BindAdapter::getSocket()
+{
+    return _s;
 }
 
 }
