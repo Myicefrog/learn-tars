@@ -26,6 +26,8 @@ public:
 
 	int getfd() const { return _sock; }
 
+	bool isValid() const { return _sock != -1; }
+
 	void close();
 
 	void setOwner(bool bOwner)  { _bOwner = bOwner; }
