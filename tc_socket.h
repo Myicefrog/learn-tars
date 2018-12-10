@@ -64,6 +64,10 @@ public:
 
 	void setCloseWaitDefault();
 
+	int recvfrom(void *pvBuf, size_t iLen, string &sFromAddr, uint16_t &iFromPort, int iFlags = 0);
+
+	int recvfrom(void *pvBuf, size_t iLen, struct sockaddr *pstFromAddr, socklen_t &iFromLen, int iFlags = 0);
+
 protected:
     	static const int INVALID_SOCKET = -1;
 

@@ -33,6 +33,7 @@ int main()
 	{
 		TC_EpollServer::HandlePtr handle = make_shared<TC_EpollServer::Handle>();
 		handle->setEpollServer(_epollServer.get());
+		handle->setHandleGroup(lsPtr);
 		handles.push_back(handle);
 	}
     

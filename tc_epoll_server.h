@@ -18,6 +18,7 @@
 #include "tc_thread.h"
 #include "tc_thread_queue.h"
 #include "tc_clientsocket.h"
+#include "tc_buffer_pool.h"
 
 using namespace std;
 
@@ -90,13 +91,17 @@ public:
 
 //        virtual void notifyFilter();
 
-        bool waitForRecvQueue(tagRecvData* &recv, uint32_t iWaitTime);
+//        bool waitForRecvQueue(tagRecvData* &recv, uint32_t iWaitTime);
+
+		void setHandleGroup(TC_EpollServer::BindAdapterPtr& lsPtr);
 
 		friend class BindAdapter;
 
     protected:
 
         TC_EpollServer  *_pEpollServer;
+
+		BindAdapterPtr  _lsPtr;
 
         uint32_t  _iWaitTime;
 
@@ -180,11 +185,28 @@ public:
 		protected:
 			
 			void close();
+
+			virtual int recv(recv_queue::queue_type &o);
 			
 			void insertRecvQueue(recv_queue::queue_type &vRecvData);
 
+			virtual int send();
+
+			virtual int send(const string& buffer, const string &ip, uint16_t port, bool byEpollout = false);
+	
+			int send(const std::vector<TC_Slice>& slices);			
+
 			friend class NetThread;
 
+		private:
+
+			int tcpSend(const void* data, size_t len);
+
+			int tcpWriteV(const std::vector<iovec>& buffers);
+
+			void clearSlices(std::vector<TC_Slice>& slices);
+
+			void adjustSlices(std::vector<TC_Slice>& slices, size_t toSkippedBytes);
 		
 		protected:
 			
@@ -199,6 +221,14 @@ public:
 			string              _ip;
 
 			uint16_t             _port;
+
+			char                *_pRecvBuffer;
+		
+			string              _recvbuffer;
+		
+		    std::vector<TC_Slice>  _sendbuffer;
+
+			bool                _bClose;
 
 		};		
 
@@ -219,6 +249,12 @@ public:
 
 		void processPipe();
 
+		int recvBuffer(Connection *cPtr, recv_queue::queue_type &v);
+
+		int sendBuffer(Connection *cPtr, const string &buffer, const string &ip, uint16_t port);
+
+		int sendBuffer(Connection *cPtr);
+
 		enum
         	{
             	ET_LISTEN = 1,
@@ -233,12 +269,7 @@ public:
 			uint32_t uid;	
 		}_response;
 
-
-        void insertRecvQueue(const recv_queue::queue_type &vtRecvData,bool bPushBack = true);
-
 		void send(unsigned int uid, const string &s, const string &ip, uint16_t port);
-             
-		bool waitForRecvQueue(tagRecvData* &recv, uint32_t iWaitTime);
 
 		void addTcpConnection(Connection *cPtr);
 
@@ -264,7 +295,7 @@ public:
 
 		map<int,int>               _listen_connect_id;
 
-		map<int,Connection*> _uid_connection;
+		map<int,Connection*>       _uid_connection;
 
 		list<uint32_t>             _free;
 
@@ -275,10 +306,6 @@ public:
 	    send_queue                 _sbuffer;
 
 		map<int, BindAdapterPtr>      _listeners;
-
-	public:
-
-        TC_ThreadLock               monitor;
 	};
 
 

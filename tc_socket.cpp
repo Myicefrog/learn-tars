@@ -279,4 +279,31 @@ void TC_Socket::setCloseWaitDefault()
     }
 }
 
+int TC_Socket::recvfrom(void *pvBuf, size_t iLen, string &sFromAddr, uint16_t &iFromPort, int iFlags)
+{
+    struct sockaddr stFromAddr;
+    socklen_t iFromLen = sizeof(struct sockaddr);
+    struct sockaddr_in *p = (struct sockaddr_in *)&stFromAddr;
+
+    bzero(&stFromAddr, sizeof(struct sockaddr));
+
+    int iBytes = recvfrom(pvBuf, iLen, &stFromAddr, iFromLen, iFlags);
+    if (iBytes >= 0)
+    {
+        char sAddr[INET_ADDRSTRLEN] = "\0";
+
+        inet_ntop(_iDomain, &p->sin_addr, sAddr, sizeof(sAddr));
+
+        sFromAddr = sAddr;
+        iFromPort = ntohs(p->sin_port);
+    }
+
+    return iBytes;
+}
+
+int TC_Socket::recvfrom(void *pvBuf, size_t iLen, struct sockaddr *pstFromAddr, socklen_t &iFromLen, int iFlags)
+{
+    return ::recvfrom(_sock, pvBuf, iLen, iFlags, pstFromAddr, &iFromLen);
+}
+
 }

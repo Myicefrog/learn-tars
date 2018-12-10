@@ -15,6 +15,10 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/epoll.h>
+#include <limits>
+
+#include <limits.h>
+#include <sys/uio.h>
 
 using namespace std;
 
@@ -58,6 +62,7 @@ TC_EpollServer::NetThread::Connection::Connection(TC_EpollServer::BindAdapter *p
 , _uid(0)
 , _lfd(lfd)
 , _ip(ip)
+, _bClose(false)
 , _port(port)
 {
     assert(fd != -1);
@@ -85,6 +90,69 @@ void TC_EpollServer::NetThread::Connection::close()
     }
 }
 
+int TC_EpollServer::NetThread::Connection::recv(recv_queue::queue_type &o)
+{
+    o.clear();
+
+    while(true)
+    {
+        char buffer[32 * 1024];
+        int iBytesReceived = 0;
+
+        iBytesReceived = ::read(_sock.getfd(), (void*)buffer, sizeof(buffer));
+
+        if (iBytesReceived < 0)
+        {
+            if(errno == EAGAIN)
+            {
+                //没有数据了
+                break;
+            }
+            else
+            {
+                //客户端主动关闭
+                return -1;
+            }
+        }
+        else if( iBytesReceived == 0)
+        {
+            //客户端主动关闭
+            return -1;
+        }
+
+        _recvbuffer.append(buffer, iBytesReceived);
+
+        //接收到数据不超过buffer,没有数据了(如果有数据,内核会再通知你)
+        if((size_t)iBytesReceived < sizeof(buffer))
+        {
+        	break;
+        }
+    }
+
+    if(_lfd != -1)
+    {
+        //return parseProtocol(o);
+        if(!_recvbuffer.empty())
+        {
+        	tagRecvData* recv = new tagRecvData();
+            recv->buffer           = std::move(_recvbuffer);
+           	recv->ip               = _ip;
+            recv->port             = _port;
+            recv->recvTimeStamp    = 0;
+            recv->uid              = getId();
+            recv->isOverload       = false;
+            recv->isClosed         = false;
+            recv->fd               = getfd();
+
+            o.push_back(recv);
+        }
+		return o.size();
+    }
+
+    return o.size();
+}
+
+
 void TC_EpollServer::NetThread::Connection::insertRecvQueue(recv_queue::queue_type &vRecvData)
 {
     if(!vRecvData.empty())
@@ -93,6 +161,188 @@ void TC_EpollServer::NetThread::Connection::insertRecvQueue(recv_queue::queue_ty
     }
 }
 
+int TC_EpollServer::NetThread::Connection::send()
+{
+    if(_sendbuffer.empty()) return 0;
+
+    return send("", _ip, _port, true);
+}
+
+
+int TC_EpollServer::NetThread::Connection::send(const string& buffer, const string &ip, uint16_t port, bool byEpollOut)
+{
+
+    if (byEpollOut)
+    {
+        int bytes = this->send(_sendbuffer);
+        if (bytes == -1) 
+        { 
+            return -1; 
+        } 
+
+        this->adjustSlices(_sendbuffer, bytes);
+    }
+    else
+    {
+		int bytes = this->tcpSend(buffer.data(), buffer.size()); 
+
+		if (bytes == -1) 
+		{
+			cout<<"close connection by peer"<<endl;
+			return -1;
+		}
+
+		//TO BE DNOE
+		//这里后面要添加缓存，用来保存发送不完的数据
+    }
+
+    size_t toSendBytes = 0;
+    for (const auto& slice : _sendbuffer)
+    {
+        toSendBytes += slice.dataLen;
+    }
+
+    if (toSendBytes >= 8 * 1024)
+    {
+		cout<<" buffer too long close."<<endl;
+        clearSlices(_sendbuffer);
+        return -2;
+    }
+
+
+    //需要关闭链接
+    if(_bClose && _sendbuffer.empty())
+    {
+        cout<<" close connection by user."<<endl;
+        return -2;
+    }
+
+    return 0;
+}
+
+
+int TC_EpollServer::NetThread::Connection::send(const std::vector<TC_Slice>& slices)
+{
+    const int kIOVecCount = std::max<int>(sysconf(_SC_IOV_MAX), 16); // be care of IOV_MAX
+
+    size_t alreadySentVecs = 0;
+    size_t alreadySentBytes = 0;
+    while (alreadySentVecs < slices.size())
+    {
+        const size_t vc = std::min<int>(slices.size() - alreadySentVecs, kIOVecCount);
+
+        // convert to iovec array
+        std::vector<iovec> vecs;
+        size_t expectSent = 0;
+        for (size_t i = alreadySentVecs; i < alreadySentVecs + vc; ++ i)
+        {
+            assert (slices[i].dataLen > 0);
+
+            iovec ivc;
+            ivc.iov_base = slices[i].data;
+            ivc.iov_len = slices[i].dataLen;
+            expectSent += slices[i].dataLen;
+
+            vecs.push_back(ivc);
+        }
+
+        int bytes = tcpWriteV(vecs);
+        if (bytes == -1)
+            return -1; // should close
+        else if (bytes == 0)
+            return alreadySentBytes; // EAGAIN
+        else if (bytes == static_cast<int>(expectSent))
+        {
+            alreadySentBytes += bytes;
+            alreadySentVecs += vc; // continue sent
+        }
+        else
+        {
+            assert (bytes > 0); // partial send
+            alreadySentBytes += bytes;
+            return alreadySentBytes;
+        }
+    }
+                
+    return alreadySentBytes;
+}
+
+int TC_EpollServer::NetThread::Connection::tcpWriteV(const std::vector<iovec>& buffers)
+{
+    const int kIOVecCount = std::max<int>(sysconf(_SC_IOV_MAX), 16); // be care of IOV_MAX
+    const int cnt = static_cast<int>(buffers.size());
+
+    assert (cnt <= kIOVecCount);
+        
+    const int sock = _sock.getfd();
+        
+    int bytes = static_cast<int>(::writev(sock, &buffers[0], cnt));
+    if (bytes == -1)
+    {
+        assert (errno != EINVAL);
+        if (errno == EAGAIN)
+            return 0;
+
+        return -1;  // can not send any more
+    }
+    else
+    {
+        return bytes;
+    }
+}
+
+int TC_EpollServer::NetThread::Connection::tcpSend(const void* data, size_t len)
+{
+    if (len == 0)
+        return 0;
+
+    int bytes = ::send(_sock.getfd(), data, len, 0);
+    if (bytes == -1)
+    {
+        if (EAGAIN == errno)
+            bytes = 0; 
+                      
+        if (EINTR == errno)
+            bytes = 0; // try ::send later
+    }
+
+    return bytes;
+}
+
+void TC_EpollServer::NetThread::Connection::clearSlices(std::vector<TC_Slice>& slices)
+{
+    adjustSlices(slices, std::numeric_limits<std::size_t>::max());
+}
+
+void TC_EpollServer::NetThread::Connection::adjustSlices(std::vector<TC_Slice>& slices, size_t toSkippedBytes)
+{
+    size_t skippedVecs = 0;
+    for (size_t i = 0; i < slices.size(); ++ i)
+    {
+        assert (slices[i].dataLen > 0);
+        if (toSkippedBytes >= slices[i].dataLen)
+        {
+            toSkippedBytes -= slices[i].dataLen;
+            ++ skippedVecs;
+        }
+        else
+        {
+            if (toSkippedBytes != 0)
+            {
+                const char* src = (const char*)slices[i].data + toSkippedBytes;
+                memmove(slices[i].data, src, slices[i].dataLen - toSkippedBytes);
+                slices[i].dataLen -= toSkippedBytes;
+            }
+
+            break;
+        }
+    }
+
+	//TO BE DNOE
+    // free to pool
+
+    slices.erase(slices.begin(), slices.begin() + skippedVecs);
+}
 
 TC_EpollServer::NetThread::NetThread(TC_EpollServer *epollServer)
 : _epollServer(epollServer)
@@ -288,55 +538,12 @@ void TC_EpollServer::NetThread::processNet(const epoll_event &ev)
 	{
 		recv_queue::queue_type vRecvData;
 
-		while(true)
-		{
-			char buffer[32*1024];
-			int iBytesReceived = 0;
-			
-			iBytesReceived = ::read(fd, (void*)buffer, sizeof(buffer));
-			cout<<"server recieve "<<iBytesReceived<<" bytes buffer is "<<buffer<<endl;
-			
-			if(iBytesReceived < 0)
-			{
-				if(errno == EAGAIN)
-				{
-					break;
-				}
-				else
-				{
-					cout<<"client close"<<endl;
-					return ;
-				}
-			}
-			else if( iBytesReceived == 0 )
-			{
-				cout<<"1 client close"<<endl;
-				return ;
-			}
-
-			_recvbuffer.append(buffer, iBytesReceived);
-
-		}
-
-		if(!_recvbuffer.empty())
-		{
-			tagRecvData* recv = new tagRecvData();
-			recv->buffer           = std::move(_recvbuffer);
-			recv->ip               = "";
-			recv->port             = 0;
-			recv->recvTimeStamp    = 0;
-			recv->uid              = uid;
-			recv->isOverload       = false;
-			recv->isClosed         = false;
-			recv->fd               = fd;
-
-			vRecvData.push_back(recv);
-		}
+		int ret = recvBuffer(cPtr, vRecvData);
 
 		if(!vRecvData.empty())
 		{
 			cout<<"insertRecvQueue"<<endl;
-			insertRecvQueue(vRecvData);
+			cPtr->insertRecvQueue(vRecvData);
 		}
 
 	}
@@ -344,6 +551,11 @@ void TC_EpollServer::NetThread::processNet(const epoll_event &ev)
 	if (ev.events & EPOLLOUT)
 	{
 		cout<<"need to send data"<<endl;
+		int ret = sendBuffer(cPtr);
+		if (ret < 0)
+		{
+			cout<<"need delConnection"<<endl;
+		}
 	}	
 }
 
@@ -372,9 +584,16 @@ void TC_EpollServer::NetThread::processPipe()
 
                 cout<<"processPipe uid is "<<uid<<" fd is "<<fd<<endl;
 
-                int bytes = ::send(fd, (*it)->buffer.c_str(), (*it)->buffer.size(), 0);
+                //int bytes = ::send(fd, (*it)->buffer.c_str(), (*it)->buffer.size(), 0);
 
-                cout<<"send byte is "<<bytes<<endl;
+                //cout<<"send byte is "<<bytes<<endl;
+
+				int ret = sendBuffer(cPtr, (*it)->buffer, (*it)->ip, (*it)->port);
+				
+				if(ret < 0)
+				{
+					cout<<"remember to delete Connection delConnection"<<endl;
+				}
 
                 break;
            }
@@ -424,6 +643,20 @@ void TC_EpollServer::NetThread::addTcpConnection(TC_EpollServer::NetThread::Conn
 	
 }
 
+int  TC_EpollServer::NetThread::recvBuffer(TC_EpollServer::NetThread::Connection *cPtr, recv_queue::queue_type &v)
+{
+    return cPtr->recv(v);
+}
+
+int  TC_EpollServer::NetThread::sendBuffer(TC_EpollServer::NetThread::Connection *cPtr)
+{
+    return cPtr->send();
+}
+
+int  TC_EpollServer::NetThread::sendBuffer(TC_EpollServer::NetThread::Connection *cPtr, const string &buffer, const string &ip, uint16_t port)
+{
+    return cPtr->send(buffer, ip, port);
+}
 
 TC_EpollServer::Handle::Handle()
 : _pEpollServer(NULL)
@@ -439,16 +672,6 @@ void TC_EpollServer::Handle::sendResponse(uint32_t uid, const string &sSendBuffe
 {
     _pEpollServer->send(uid, sSendBuffer, ip, port, fd);
 }
-
-
-bool TC_EpollServer::Handle::waitForRecvQueue(tagRecvData* &recv, uint32_t iWaitTime)
-{
-
-   TC_EpollServer::NetThread* netThread = _pEpollServer->getNetThread();
-
-    return netThread->waitForRecvQueue(recv,iWaitTime);
-}
-
 
 void TC_EpollServer::Handle::close(uint32_t uid, int fd)
 {
@@ -470,20 +693,21 @@ void TC_EpollServer::Handle::handleImp()
     while(true)
     {
         {
-            TC_EpollServer::NetThread* netThread = _pEpollServer->getNetThread();
+            TC_ThreadLock::Lock lock(_lsPtr->monitor);
 
-            TC_ThreadLock::Lock lock(netThread->monitor);
-
-            netThread->monitor.timedWait(100);
+            _lsPtr->monitor.timedWait(100);
 
         }
 
-        while(waitForRecvQueue(recv, 0))
-        {
+		BindAdapterPtr& adapters = _lsPtr;
+
+        while(adapters->waitForRecvQueue(recv, 0))
+		{
 
 			cout<<"Handle thread id is "<<id()<<endl;
             cout<<"handleImp recv uid  is "<<recv->uid<<endl;
-            _pEpollServer->send(recv->uid,recv->buffer, "0", 0, 0);
+            //_pEpollServer->send(recv->uid,recv->buffer, recv->ip, recv->port, recv->fd);
+			sendResponse(recv->uid,recv->buffer, recv->ip, recv->port, recv->fd);
 
         }
     }
@@ -497,39 +721,11 @@ void TC_EpollServer::Handle::setEpollServer(TC_EpollServer *pEpollServer)
     _pEpollServer = pEpollServer;
 }
 
-
-bool TC_EpollServer::NetThread::waitForRecvQueue(tagRecvData* &recv, uint32_t iWaitTime)
+void TC_EpollServer::Handle::setHandleGroup(TC_EpollServer::BindAdapterPtr& lsPtr)
 {
-    //cout<<"NetThread::waitForRecvQueue"<<endl;
+    TC_ThreadLock::Lock lock(*this);
 
-    bool bRet = false;
-
-    bRet = _rbuffer.pop_front(recv, iWaitTime);
-
-    if(!bRet)
-    {
-        return bRet;
-    }
-
-    return bRet;
-}
-
-void TC_EpollServer::NetThread::insertRecvQueue(const recv_queue::queue_type &vtRecvData, bool bPushBack)
-{
-    {
-        if (bPushBack)
-        {
-            _rbuffer.push_back(vtRecvData);
-        }
-        else
-        {
-            _rbuffer.push_front(vtRecvData);
-        }
-    }
-
-    TC_ThreadLock::Lock lock(monitor);
-
-    monitor.notify();
+    _lsPtr = lsPtr;
 }
 
 TC_EpollServer::BindAdapter::BindAdapter(TC_EpollServer *pEpollServer)
