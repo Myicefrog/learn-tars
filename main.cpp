@@ -7,9 +7,7 @@ using namespace tars;
 int main()
 {
 
-	TC_EpollServerPtr _epollServer = make_shared<TC_EpollServer>();
-
-    TC_EpollServer::NetThread* vNetThread = _epollServer->getNetThread();
+	TC_EpollServerPtr _epollServer = make_shared<TC_EpollServer>(3);
 
     string ip = "127.0.0.1";
 
@@ -20,8 +18,6 @@ int main()
     lsPtr->setEndpoint(ip,port);
 
     _epollServer->bind(lsPtr);
-
-    vNetThread->createEpoll(1);
 
 //////////////////////////////////////////////
     
@@ -44,7 +40,40 @@ int main()
 
 /////////////////////////////////////////////
 
-    vNetThread->run();
+	_epollServer->createEpoll();
+
+    unsigned int iNetThreadNum = _epollServer->getNetThreadNum();
+    vector<TC_EpollServer::NetThread*> vNetThread = _epollServer->getNetThread();
+
+	for (size_t i = 0; i < iNetThreadNum; ++i)
+    {
+        vNetThread[i]->start();
+    }
+
+    while(!_epollServer->isTerminate())
+    {
+
+	}	
+
+	if(_epollServer->isTerminate())
+    {
+        for(size_t i = 0; i < iNetThreadNum; ++i)
+        {
+            vNetThread[i]->terminate();
+            vNetThread[i]->getThreadControl().join();
+        }
+
+        //_epollServer->stopThread();
+    
+		for(auto& handle : handles)
+		{
+			if (handle->isAlive())
+            {
+                handle->getThreadControl().join();
+            }
+		}
+		
+    }
 
     return 0;
 }

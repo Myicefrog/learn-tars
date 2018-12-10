@@ -19,6 +19,8 @@
 
 #include <limits.h>
 #include <sys/uio.h>
+#include <sys/types.h>
+#include <sys/un.h>
 
 using namespace std;
 
@@ -26,20 +28,27 @@ namespace tars
 {
 #define H64(x) (((uint64_t)x) << 32)
 
-TC_EpollServer::TC_EpollServer()
+TC_EpollServer::TC_EpollServer(unsigned int iNetThreadNum)
+: _bTerminate(false)
+, _netThreadNum(iNetThreadNum)
 {
-    _netThreads = new TC_EpollServer::NetThread(this);
+	for (size_t i = 0; i < iNetThreadNum; ++i)
+	{
+		TC_EpollServer::NetThread* netThreads = new TC_EpollServer::NetThread(this);
+		_netThreads.push_back(netThreads);
+	}
 }
 
 TC_EpollServer::~TC_EpollServer()
 {
-	delete _netThreads;
+	terminate();
 }
 
 void TC_EpollServer::send(unsigned int uid, const string &s, const string &ip, uint16_t port, int fd)
 {
+	TC_EpollServer::NetThread* netThread = getNetThreadOfFd(fd);
 
-    _netThreads->send(uid, s, ip, port);
+    netThread->send(uid, s, ip, port);
 
 }
 
@@ -47,14 +56,47 @@ int  TC_EpollServer::bind(TC_EpollServer::BindAdapterPtr& lsPtr)
 {
     int iRet = 0;
 
-    iRet = _netThreads->bind(lsPtr);
+    for(size_t i = 0; i < _netThreads.size(); ++i)
+    {
+        if(i == 0)
+        {
+            iRet = _netThreads[i]->bind(lsPtr);
+        }
+    }
 
     return iRet;
 }
 
 void TC_EpollServer::addConnection(TC_EpollServer::NetThread::Connection * cPtr, int fd, int iType)
 {
-	_netThreads->addTcpConnection(cPtr);
+    TC_EpollServer::NetThread* netThread = getNetThreadOfFd(fd);
+
+	netThread->addTcpConnection(cPtr);
+}
+
+void TC_EpollServer::createEpoll()
+{
+    for(size_t i = 0; i < _netThreads.size(); ++i)
+    {
+        _netThreads[i]->createEpoll(i+1);
+    }
+}
+
+void TC_EpollServer::close(unsigned int uid, int fd)
+{
+    TC_EpollServer::NetThread* netThread = getNetThreadOfFd(fd);
+
+    netThread->close(uid);
+}
+
+void TC_EpollServer::terminate()
+{
+    if(!_bTerminate)
+    {
+        tars::TC_ThreadLock::Lock sync(*this);
+        _bTerminate = true;
+        notifyAll();
+    }
 }
 
 TC_EpollServer::NetThread::Connection::Connection(TC_EpollServer::BindAdapter *pBindAdapter, int lfd, int timeout, int fd, const string& ip, uint16_t port)
@@ -344,8 +386,15 @@ void TC_EpollServer::NetThread::Connection::adjustSlices(std::vector<TC_Slice>& 
     slices.erase(slices.begin(), slices.begin() + skippedVecs);
 }
 
+bool TC_EpollServer::NetThread::Connection::setClose()
+{
+    _bClose = true;
+    return _sendbuffer.empty();
+}
+
 TC_EpollServer::NetThread::NetThread(TC_EpollServer *epollServer)
 : _epollServer(epollServer)
+, _bTerminate(false)
 {
 	_shutdown.createSocket();
 	_notify.createSocket();
@@ -390,7 +439,9 @@ void TC_EpollServer::NetThread::bind(const TC_Endpoint &ep, TC_Socket &s)
 
 void TC_EpollServer::NetThread::createEpoll(uint32_t iIndex)
 {
-	int _total = 200000;
+	//TO BE DONE _bufferPool
+	
+	uint32_t _total = 200000;
 	
 	_epoller.create(10240);
 	
@@ -419,7 +470,7 @@ void TC_EpollServer::NetThread::run()
 {
 	cout<<"NetThread run"<<endl;
 
-	while(true)
+	while(!_bTerminate)
 	{
 		int iEvNum = _epoller.wait(2000);
 	
@@ -531,6 +582,8 @@ void TC_EpollServer::NetThread::processNet(const epoll_event &ev)
 	if (ev.events & EPOLLERR || ev.events & EPOLLHUP)
 	{
 		cout<<"should delet connection"<<endl;
+
+		delConnection(cPtr,true,EM_SERVER_CLOSE);
 		return;
 	}
 
@@ -539,6 +592,12 @@ void TC_EpollServer::NetThread::processNet(const epoll_event &ev)
 		recv_queue::queue_type vRecvData;
 
 		int ret = recvBuffer(cPtr, vRecvData);
+
+		if(ret < 0)
+		{
+			delConnection(cPtr,true,EM_CLIENT_CLOSE);
+			return;
+		}
 
 		if(!vRecvData.empty())
 		{
@@ -574,19 +633,28 @@ void TC_EpollServer::NetThread::processPipe()
     {
         switch((*it)->cmd)
         {
+        case 'c':
+            {
+                Connection *cPtr = _uid_connection[(*it)->uid];
+
+                if(cPtr)
+                {
+                    if(cPtr->setClose())
+                    {
+                        delConnection(cPtr,true,EM_SERVER_CLOSE);
+                    }
+                }
+                break;
+            }
         case 's':
             {
                 uint32_t uid = (*it)->uid;
 
 				Connection *cPtr = _uid_connection[uid];    
 
-				int fd = cPtr->getfd();           
+				//int fd = cPtr->getfd();           
 
-                cout<<"processPipe uid is "<<uid<<" fd is "<<fd<<endl;
-
-                //int bytes = ::send(fd, (*it)->buffer.c_str(), (*it)->buffer.size(), 0);
-
-                //cout<<"send byte is "<<bytes<<endl;
+                cout<<"processPipe uid is "<<cPtr->getId()<<" fd is "<<cPtr->getfd()<<endl;
 
 				int ret = sendBuffer(cPtr, (*it)->buffer, (*it)->ip, (*it)->port);
 				
@@ -609,6 +677,11 @@ void TC_EpollServer::NetThread::processPipe()
 
 void TC_EpollServer::NetThread::send(uint32_t uid, const string &s, const string &ip, uint16_t port)
 {
+    if(_bTerminate)
+    {
+        return;
+    }	
+
     tagSendData* send = new tagSendData();
 
     send->uid = uid;
@@ -627,6 +700,20 @@ void TC_EpollServer::NetThread::send(uint32_t uid, const string &s, const string
     _epoller.mod(_notify.getfd(), H64(ET_NOTIFY), EPOLLOUT);
 }
 
+void TC_EpollServer::NetThread::close(uint32_t uid)
+{
+    tagSendData* send = new tagSendData();
+
+    send->uid = uid;
+
+    send->cmd = 'c';
+
+    _sbuffer.push_back(send);
+
+    //通知epoll响应, 关闭连接
+    _epoller.mod(_notify.getfd(), H64(ET_NOTIFY), EPOLLOUT);
+}
+
 void TC_EpollServer::NetThread::addTcpConnection(TC_EpollServer::NetThread::Connection *cPtr)
 {
 	uint32_t uid = _free.front();
@@ -638,6 +725,8 @@ void TC_EpollServer::NetThread::addTcpConnection(TC_EpollServer::NetThread::Conn
 	--_free_size;
 
 	_uid_connection[uid] = cPtr;
+
+	//注意这里是EPOLLIN 和EPOLLOUT同时有，目的是EPOLLOUT保证在processNet时候发送上次未发送完的结果
 
     _epoller.add(cPtr->getfd(), cPtr->getId(), EPOLLIN | EPOLLOUT);
 	
@@ -658,6 +747,51 @@ int  TC_EpollServer::NetThread::sendBuffer(TC_EpollServer::NetThread::Connection
     return cPtr->send(buffer, ip, port);
 }
 
+void TC_EpollServer::NetThread::terminate()
+{
+    _bTerminate = true;
+
+    //通知队列醒过来
+	//还没找到谁在等这个通知
+    _sbuffer.notifyT();
+
+    //通知epoll响应, 关闭连接
+    _epoller.mod(_shutdown.getfd(), H64(ET_CLOSE), EPOLLOUT);
+}
+
+void TC_EpollServer::NetThread::delConnection(TC_EpollServer::NetThread::Connection *cPtr, bool bEraseList,EM_CLOSE_T closeType)
+{
+    //如果是TCP的连接才真正的关闭连接
+    if (cPtr->getListenfd() != -1)
+    {
+        uint32_t uid = cPtr->getId();
+
+        //构造一个tagRecvData，通知业务该连接的关闭事件
+
+        tagRecvData* recv = new tagRecvData();
+        recv->uid        =  uid;
+        recv->ip         = cPtr->getIp();
+        recv->port       = cPtr->getPort();
+        recv->isClosed   = true;
+        recv->isOverload = false;
+        recv->recvTimeStamp = 0;
+        recv->fd         = cPtr->getfd();
+        recv->closeType = (int)closeType;
+
+        recv_queue::queue_type vRecvData;
+
+        vRecvData.push_back(recv);
+
+        cPtr->getBindAdapter()->insertRecvQueue(vRecvData);
+
+        //从epoller删除句柄放在close之前, 否则重用socket时会有问题
+        _epoller.del(cPtr->getfd(), uid, 0);
+
+        cPtr->close();
+    }
+}
+
+
 TC_EpollServer::Handle::Handle()
 : _pEpollServer(NULL)
 , _iWaitTime(100)
@@ -675,7 +809,7 @@ void TC_EpollServer::Handle::sendResponse(uint32_t uid, const string &sSendBuffe
 
 void TC_EpollServer::Handle::close(uint32_t uid, int fd)
 {
-    //_pEpollServer->close(uid, fd);
+    _pEpollServer->close(uid, fd);
 }
 
 void TC_EpollServer::Handle::run()
@@ -690,7 +824,7 @@ void TC_EpollServer::Handle::handleImp()
     cout<<"Handle::handleImp"<<endl;
     tagRecvData* recv = NULL;
 
-    while(true)
+    while(!getEpollServer()->isTerminate())
     {
         {
             TC_ThreadLock::Lock lock(_lsPtr->monitor);
@@ -701,15 +835,39 @@ void TC_EpollServer::Handle::handleImp()
 
 		BindAdapterPtr& adapters = _lsPtr;
 
-        while(adapters->waitForRecvQueue(recv, 0))
+		try
 		{
 
-			cout<<"Handle thread id is "<<id()<<endl;
-            cout<<"handleImp recv uid  is "<<recv->uid<<endl;
-            //_pEpollServer->send(recv->uid,recv->buffer, recv->ip, recv->port, recv->fd);
-			sendResponse(recv->uid,recv->buffer, recv->ip, recv->port, recv->fd);
+        	while(adapters->waitForRecvQueue(recv, 0))
+			{
 
-        }
+				tagRecvData& stRecvData = *recv;
+
+				stRecvData.adapter = adapters;
+
+				if(stRecvData.isClosed)
+				{
+					cout<<"give info to real buisiness to close"<<endl;		
+				}
+				else
+				{
+					cout<<"Handle thread id is "<<id()<<endl;
+            		cout<<"handleImp recv uid  is "<<recv->uid<<endl;
+					sendResponse(recv->uid,recv->buffer, recv->ip, recv->port, recv->fd);
+				}
+				delete recv;
+            	recv = NULL;
+        	}
+		}
+		catch(...)
+		{
+			if(recv)
+            {
+            	close(recv->uid, recv->fd);
+                delete recv;
+                recv = NULL;
+            }
+		}
     }
 
 }
@@ -726,6 +884,11 @@ void TC_EpollServer::Handle::setHandleGroup(TC_EpollServer::BindAdapterPtr& lsPt
     TC_ThreadLock::Lock lock(*this);
 
     _lsPtr = lsPtr;
+}
+
+TC_EpollServer* TC_EpollServer::Handle::getEpollServer()
+{
+    return _pEpollServer;
 }
 
 TC_EpollServer::BindAdapter::BindAdapter(TC_EpollServer *pEpollServer)

@@ -25,9 +25,16 @@ using namespace std;
 namespace tars
 {
 
-class TC_EpollServer
+class TC_EpollServer : public TC_ThreadLock
 {
 public:
+
+    enum EM_CLOSE_T
+    {
+        EM_CLIENT_CLOSE = 0,         //客户端主动关闭
+        EM_SERVER_CLOSE = 1,        //服务端业务主动调用close关闭连接,或者框架因某种异常主动关闭连接
+        EM_SERVER_TIMEOUT_CLOSE = 2  //连接超时了，服务端主动关闭
+    };	
 
     class NetThread;
 
@@ -47,7 +54,7 @@ public:
         bool            isOverload;     /**是否已过载 */
         bool            isClosed;       /**是否已关闭*/
         int                fd;                /*保存产生该消息的fd，用于回包时选择网络线程*/
-       // BindAdapterPtr  adapter;        /**标识哪一个adapter的消息*/
+        BindAdapterPtr  adapter;        /**标识哪一个adapter的消息*/
         int             closeType;     /*如果是关闭消息包，则标识关闭类型,0:表示客户端主动关闭；1:服务端主动关闭;2:连接超时服务端主动关闭*/
     };
 
@@ -85,13 +92,7 @@ public:
 
         void close(unsigned int uid, int fd);
 
-//        void setWaitTime(uint32_t iWaitTime);
-
         virtual void initialize() {};
-
-//        virtual void notifyFilter();
-
-//        bool waitForRecvQueue(tagRecvData* &recv, uint32_t iWaitTime);
 
 		void setHandleGroup(TC_EpollServer::BindAdapterPtr& lsPtr);
 
@@ -156,7 +157,7 @@ public:
  
 	};
 
-	class NetThread
+	class NetThread : public TC_Thread, public TC_ThreadLock
 	{
 	public:
 
@@ -181,6 +182,8 @@ public:
 			string getIp() const                { return _ip; }
 
 			uint16_t getPort() const            { return _port; }
+	
+			bool setClose();
 
 		protected:
 			
@@ -220,6 +223,8 @@ public:
 
 			string              _ip;
 
+			bool                _bClose;
+
 			uint16_t             _port;
 
 			char                *_pRecvBuffer;
@@ -227,8 +232,6 @@ public:
 			string              _recvbuffer;
 		
 		    std::vector<TC_Slice>  _sendbuffer;
-
-			bool                _bClose;
 
 		};		
 
@@ -255,6 +258,10 @@ public:
 
 		int sendBuffer(Connection *cPtr);
 
+		void terminate();
+
+		void delConnection(Connection *cPtr, bool bEraseList = true,EM_CLOSE_T closeType=EM_CLIENT_CLOSE);
+
 		enum
         	{
             	ET_LISTEN = 1,
@@ -270,6 +277,8 @@ public:
 		}_response;
 
 		void send(unsigned int uid, const string &s, const string &ip, uint16_t port);
+
+		void close(unsigned int uid);
 
 		void addTcpConnection(Connection *cPtr);
 
@@ -301,28 +310,43 @@ public:
 
 		volatile size_t            _free_size;
 
-        recv_queue                 _rbuffer;
-
 	    send_queue                 _sbuffer;
 
 		map<int, BindAdapterPtr>      _listeners;
+
+		bool                        _bTerminate;
 	};
 
 
 public:
 
-	TC_EpollServer();
+	TC_EpollServer(unsigned int iNetThreadNum);
 	~TC_EpollServer();
 
 public:
 
-    TC_EpollServer::NetThread* getNetThread() { return _netThreads; }
+	unsigned int getNetThreadNum() { return _netThreadNum; }
+
+    vector<TC_EpollServer::NetThread*> getNetThread() { return _netThreads; }
     
     void send(unsigned int uid, const string &s, const string &ip, uint16_t port, int fd);
+
+	void close(unsigned int uid, int fd);
+
+	NetThread* getNetThreadOfFd(int fd)
+    {
+    	return _netThreads[fd % _netThreads.size()];
+    }
 
 	int  bind(TC_EpollServer::BindAdapterPtr &lsPtr);
 
 	void addConnection(NetThread::Connection * cPtr, int fd, int iType);
+
+	void createEpoll();
+
+	bool isTerminate() const    { return _bTerminate; }
+	
+	void terminate();
 
 protected:
 
@@ -330,7 +354,11 @@ protected:
 
 private:
 
-	NetThread*        _netThreads;
+	bool                           _bTerminate;
+
+	std::vector<NetThread*>        _netThreads;
+
+	unsigned int                   _netThreadNum;
 };
 
 typedef shared_ptr<TC_EpollServer> TC_EpollServerPtr;
