@@ -22,12 +22,26 @@ int main()
     _epollServer->bind(lsPtr);
 
     vNetThread->createEpoll(1);
+
+//////////////////////////////////////////////
     
-    TC_EpollServer::Handle handle;
+    vector<TC_EpollServer::HandlePtr>          handles;
 
-    handle.setEpollServer(_epollServer.get());   
+	int handleNum = 4;
 
-    handle.start();
+	for (int32_t i = 0; i < handleNum; ++i)
+	{
+		TC_EpollServer::HandlePtr handle = make_shared<TC_EpollServer::Handle>();
+		handle->setEpollServer(_epollServer.get());
+		handles.push_back(handle);
+	}
+    
+	for(auto& handle : handles)
+	{
+		handle->start();
+	}
+
+/////////////////////////////////////////////
 
     vNetThread->run();
 

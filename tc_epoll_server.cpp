@@ -420,6 +420,7 @@ void TC_EpollServer::Handle::handleImp()
         while(waitForRecvQueue(recv, 0))
         {
 
+			cout<<"Handle thread id is "<<id()<<endl;
             cout<<"handleImp recv uid  is "<<recv->uid<<endl;
             _pEpollServer->send(recv->uid,recv->buffer, "0", 0, 0);
 
