@@ -46,7 +46,8 @@ struct ReqMessage
 	, pObjectProxy(NULL)
     , pMonitor(NULL)
     , bMonitorFin(false)
-    , bPush(false)
+    , iBeginTime(0)
+	, iRequestId(1)
     {
     }
 
@@ -73,8 +74,8 @@ struct ReqMessage
         pMonitor       = NULL;
         bMonitorFin    = false;
 
-        bPush          = false;
-
+		iBeginTime     = 0;
+		iRequestId     = 1;
     }
 
 
@@ -91,7 +92,9 @@ struct ReqMessage
     ReqMonitor *                pMonitor;        //用于同步的monitor
     bool                        bMonitorFin;    //同步请求timewait是否结束
 
-    bool                        bPush;          //push back 消息
+	int64_t                     iBeginTime;
+
+	int                         iRequestId;
 };
 typedef shared_ptr<ReqMessage> ReqMessagePtr;
 typedef TC_LoopQueue< ReqMessage*,1000 >  ReqInfoQueue;

@@ -22,8 +22,13 @@ int HelloImp::doRequest(const string& request, vector<char> &buffer)
 	cout<<"HelloImp::doRequest coming request is "<<request<<endl;
 
 	string response = "very good man";
+
+	size_t pos = request.find(":");	
+
+	string requestId = request.substr(0,pos);
+	string requestBody = request.substr(pos + 1);
 	
-	if(request == "hello")
+	if(requestBody == "hello")
 	{
 		response = "hello response";
 	}
@@ -31,6 +36,10 @@ int HelloImp::doRequest(const string& request, vector<char> &buffer)
 	{
 		response = "buddy, what are you doing";
 	}
+
+	response = requestId + ":" + response;
+
+	cout<<"response is "<<response<<endl;
 
 	buffer.assign(response.begin(),response.end());
 

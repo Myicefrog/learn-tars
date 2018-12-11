@@ -133,16 +133,17 @@ void CommunicatorEpoll::handle(FDInfo * pFDInfo, uint32_t events)
         }
         else
         {
+			Transceiver *pTransceiver = (Transceiver*)pFDInfo->p;
             //先收包
             if (events & EPOLLIN)
             {
-            	handleInputImp();
+            	handleInputImp(pTransceiver);
             }
 
             //发包
             if (events & EPOLLOUT)
             {
-                handleOutputImp();
+                handleOutputImp(pTransceiver);
             }
 
             //连接出错 直接关闭连接
@@ -160,13 +161,25 @@ void CommunicatorEpoll::handle(FDInfo * pFDInfo, uint32_t events)
 }
 
 
-void CommunicatorEpoll::handleInputImp()
+void CommunicatorEpoll::handleInputImp(Transceiver * pTransceiver)
 {
+	list<string> done;	
+	if(pTransceiver->doResponse(done) > 0)
+    {	
+        list<string>::iterator it = done.begin();
+        for (; it != done.end(); ++it)
+        {
+			string response = *it;
+			pTransceiver->getObjProxy()->finishInvoke(response);	
+				
+        }
+	}
 }
 
 
-void CommunicatorEpoll::handleOutputImp()
+void CommunicatorEpoll::handleOutputImp(Transceiver * pTransceiver)
 {
+	pTransceiver->doRequest();
 }
 
 

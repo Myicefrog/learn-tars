@@ -23,9 +23,22 @@ int main()
 
 	msg->pMonitor = new ReqMonitor;
 
-	ObjectProxy * pObjectProxy = new ObjectProxy(_communicatorEpoll);
+	string host = "127.0.0.1";
+    uint16_t port = 9877;
+
+	ObjectProxy * pObjectProxy = new ObjectProxy(_communicatorEpoll, host, port);
 
 	msg->pObjectProxy = pObjectProxy;
+
+	struct timeval tv;
+	::gettimeofday(&tv, NULL);
+    msg->iBeginTime = tv.tv_sec * (int64_t)1000 + tv.tv_usec/1000;
+
+	msg->bMonitorFin = false;
+
+	msg->pMonitor = new ReqMonitor;
+
+/////////////////////////////////////////////////////////////////////
 
 	ReqInfoQueue * pReqQ    = new ReqInfoQueue(1000);
 
@@ -37,10 +50,17 @@ int main()
 
 /////////////////////////////////////////////////////////////////////
 
-	while(true)
-	{
-	
+	if(!msg->bMonitorFin)
+    {
+    	TC_ThreadLock::Lock lock(*(msg->pMonitor));
+
+        //等待直到网络线程通知过来
+        if(!msg->bMonitorFin)
+        {
+        	msg->pMonitor->wait();
+        }
 	}
 
+	cout<<"msg->response is "<<msg->response<<endl;
 	return 0;
 }

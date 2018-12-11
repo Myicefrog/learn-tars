@@ -98,9 +98,9 @@ protected:
 
 	void handle(FDInfo * pFDInfo, uint32_t events);
 
-	void handleInputImp();
+	void handleInputImp(Transceiver * pTransceiver);
 
-	void handleOutputImp();
+	void handleOutputImp(Transceiver * pTransceiver);
 	
 protected:
 
