@@ -111,6 +111,8 @@ public:
    protected:
 
         virtual void handleImp();
+
+		virtual void handle(const tagRecvData &stRecvData) = 0;
     };
 	
 	class BindAdapter : public TC_ThreadLock
@@ -122,6 +124,10 @@ public:
 		BindAdapter(TC_EpollServer *pEpollServer);
 
 		~BindAdapter();
+
+		void setName(const string &name);
+
+		string getName() const;
 
         void setEndpoint(const string &str,const int &port);
 
@@ -153,7 +159,9 @@ public:
 
         recv_queue      _rbuffer;		
         
-        TC_ThreadLock               monitor;
+        TC_ThreadLock   monitor;
+	
+		string         _name;
  
 	};
 

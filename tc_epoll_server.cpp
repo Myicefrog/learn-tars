@@ -677,6 +677,8 @@ void TC_EpollServer::NetThread::processPipe()
 
 void TC_EpollServer::NetThread::send(uint32_t uid, const string &s, const string &ip, uint16_t port)
 {
+	cout<<"NetThread::send threadid is "<<id()<<endl;
+
     if(_bTerminate)
     {
         return;
@@ -716,6 +718,8 @@ void TC_EpollServer::NetThread::close(uint32_t uid)
 
 void TC_EpollServer::NetThread::addTcpConnection(TC_EpollServer::NetThread::Connection *cPtr)
 {
+	cout<<"NetThread::addTcpConnection threadid is "<<id()<<endl;
+
 	uint32_t uid = _free.front();
 
 	cPtr->init(uid);
@@ -853,7 +857,8 @@ void TC_EpollServer::Handle::handleImp()
 				{
 					cout<<"Handle thread id is "<<id()<<endl;
             		cout<<"handleImp recv uid  is "<<recv->uid<<endl;
-					sendResponse(recv->uid,recv->buffer, recv->ip, recv->port, recv->fd);
+					//sendResponse(recv->uid,recv->buffer, recv->ip, recv->port, recv->fd);
+					handle(stRecvData);
 				}
 				delete recv;
             	recv = NULL;
@@ -898,8 +903,19 @@ TC_EpollServer::BindAdapter::BindAdapter(TC_EpollServer *pEpollServer)
 
 TC_EpollServer::BindAdapter::~BindAdapter()
 {
-//_pEpollServer->terminate();
+	_pEpollServer->terminate();
+}
 
+void TC_EpollServer::BindAdapter::setName(const string &name)
+{
+    TC_ThreadLock::Lock lock(*this);
+
+    _name = name;
+}
+
+string TC_EpollServer::BindAdapter::getName() const
+{
+    return _name;
 }
 
 void TC_EpollServer::BindAdapter::insertRecvQueue(const recv_queue::queue_type &vtRecvData, bool bPushBack)
