@@ -65,7 +65,7 @@ protected:
 
 	FDInfo                   _fdInfo;	
 	
-	string 					 _sendBuffer;
+	TC_Buffer 			     _sendBuffer;
 	
 	ObjectProxy*             _objectProxy;
 	

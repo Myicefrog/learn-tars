@@ -36,9 +36,22 @@ void ObjectProxy::invoke(ReqMessage * msg)
 		if(!bFlag)
 		{
 			cout<<"_timeoutQueue->push fail"<<endl;
+			msg->eStatus = ReqMessage::REQ_EXC;
+			
+			finishInvoke(msg);
 		}
 		cout<<"_trans->sendRequest"<<endl;
 	}
+	else
+	{
+		bool bFlag = _timeoutQueue->push(msg,msg->iRequestId, 1000+msg->iBeginTime, false);
+        if(!bFlag)
+		{
+			msg->eStatus = ReqMessage::REQ_EXC;
+			finishInvoke(msg);
+		}	
+	}
+
 }
 
 //void AdapterProxy::finishInvoke(ResponsePacket & rsp)
@@ -64,10 +77,47 @@ void ObjectProxy::finishInvoke(const string& rsp)
 
 void ObjectProxy::finishInvoke(ReqMessage * msg)
 {
-	TC_ThreadLock::Lock sync(*(msg->pMonitor));
-    msg->pMonitor->notify();
-    msg->bMonitorFin = true;	
-	return ;
+	if(msg->eType == ReqMessage::SYNC_CALL)
+	{
+		TC_ThreadLock::Lock sync(*(msg->pMonitor));
+    	msg->pMonitor->notify();
+    	msg->bMonitorFin = true;	
+		return ;
+	}
+
+	if(msg->eType == ReqMessage::ASYNC_CALL)
+	{
+		getCommunicatorEpoll()->pushAsyncThreadQueue(msg);
+	}
+}
+
+void ObjectProxy::doInvoke()
+{
+	if(_timeoutQueue->sendListEmpty())
+	{
+		return ;
+	}
+
+	while(!_timeoutQueue->sendListEmpty())
+	{
+		ReqMessage * msg = NULL;
+		
+		_timeoutQueue->getSend(msg);
+		
+		int iRet = _trans->sendRequest(msg->sReqData.c_str(), msg->sReqData.size());
+
+		if(iRet == Transceiver::eRetError)
+		{
+			cout<<"doInvoke send fail"<<endl;
+			return;
+		}
+
+		if(iRet == Transceiver::eRetFull)
+		{
+			return;
+		}
+	}
+
 }
 
 }

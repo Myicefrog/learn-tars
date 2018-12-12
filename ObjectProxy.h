@@ -22,6 +22,8 @@ public:
 
 	void finishInvoke(ReqMessage * msg);
 
+	void doInvoke();
+
 	CommunicatorEpoll * getCommunicatorEpoll()
     {
         return _communicatorEpoll;

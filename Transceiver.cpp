@@ -1,5 +1,6 @@
 #include "Transceiver.h"
 #include "ObjectProxy.h"
+#include<sys/uio.h>
 
 namespace tars
 {
@@ -31,6 +32,10 @@ void Transceiver::close()
     NetworkUtil::closeSocketNoThrow(_fd);
 
     _fd = -1;
+
+	_sendBuffer.Clear();
+
+	_recvBuffer.Clear();
 
 }
 
@@ -67,16 +72,56 @@ void Transceiver::connect()
 
 int Transceiver::doRequest()
 {
+	int iRet = 0;
+
+	if(!_sendBuffer.IsEmpty())
+	{
+		size_t length = 0;
+		void* data = NULL;
+		_sendBuffer.PeekData(data, length);
+
+		iRet = this->send(data, length, 0);
+
+		if(iRet < 0)
+		{
+			return iRet;
+		}
+
+		if(iRet > 0)
+		{
+			_sendBuffer.Consume(iRet);
+			if (_sendBuffer.IsEmpty())
+				_sendBuffer.Shrink();
+			else
+				return 0;
+		}
+	}
+
+	getObjProxy()->doInvoke();
+	
 	return 0;	
 }
 
 int Transceiver::sendRequest(const char * pData, size_t iSize, bool forceSend)
 {
+	//保证发送的顺序，这里的数据不会丢失，而是放在了ObjectProxy里的_timeoutQueue中
+	if(!_sendBuffer.IsEmpty())
+    {
+        return eRetError;
+    }
+
 	int iRet = this->send(pData,iSize,0);
 
 	if(iRet < 0)
     {
         return eRetError;
+    }
+
+	//发送不完再放入_sendBuffer
+	if(iRet < (int)iSize)
+    {
+        _sendBuffer.PushData(pData+iRet,iSize-iRet);
+        return eRetFull;
     }
 	return iRet;
 }

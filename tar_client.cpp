@@ -9,7 +9,7 @@ using namespace tars;
 int main()
 {
 
-	CommunicatorEpoll* _communicatorEpoll =  new CommunicatorEpoll();
+	CommunicatorEpoll* _communicatorEpoll =  new CommunicatorEpoll(3);
 	
 	_communicatorEpoll->start();
 

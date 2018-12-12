@@ -1,16 +1,33 @@
 #include "CommunicatorEpoll.h"
 #include "ObjectProxy.h"
+#include "AsyncProcThread.h"
 
 using namespace std;
 
 namespace tars
 {
-CommunicatorEpoll::CommunicatorEpoll()
+CommunicatorEpoll::CommunicatorEpoll(size_t _netThreadSeq)
+: _asyncThreadNum(3)
+, _asyncSeq(0)
 {
     _ep.create(1024);
 
     _shutdown.createSocket();
     _ep.add(_shutdown.getfd(), 0, EPOLLIN);
+
+
+	//异步线程数目
+	if(_asyncThreadNum == 0)
+    {
+        _asyncThreadNum = 3;
+    }
+
+    //创建异步线程
+    for(size_t i = 0; i < _asyncThreadNum; ++i)
+    {
+        _asyncThread[i] = new AsyncProcThread(10000);
+        _asyncThread[i]->start();
+    }	
 
     //初始化请求的事件通知
     for(size_t i = 0; i < 2048; ++i)
@@ -182,6 +199,16 @@ void CommunicatorEpoll::handleOutputImp(Transceiver * pTransceiver)
 	pTransceiver->doRequest();
 }
 
+void CommunicatorEpoll::pushAsyncThreadQueue(ReqMessage * msg)
+{
+    //先不考虑每个线程队列数目不一致的情况
+    _asyncThread[_asyncSeq]->push_back(msg);
+    _asyncSeq ++;
 
+    if(_asyncSeq == _asyncThreadNum)
+    {
+        _asyncSeq = 0;
+    }
 }
 
+}
