@@ -2,6 +2,7 @@
 #define __TARS_SERVANT_H_
 
 #include "tc_epoll_server.h"
+#include "ServantProxy.h"
 
 using namespace std;
 

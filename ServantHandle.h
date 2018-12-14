@@ -8,6 +8,8 @@
 #include "tc_monitor.h"
 #include "tc_epoll_server.h"
 #include "Servant.h"
+#include <ucontext.h>
+#include "CoroutineScheduler.h"
 
 
 namespace tars
@@ -21,7 +23,18 @@ public:
 	
 	~ServantHandle();
 
+	virtual void run();
+
 	virtual void handle(const TC_EpollServer::tagRecvData &stRecvData);
+
+protected:
+
+	virtual void handleRequest();
+
+	virtual void handleRecvData(TC_EpollServer::tagRecvData *stRecvData);
+
+	virtual void stopHandle() {}
+
 
 protected:
 
@@ -30,6 +43,8 @@ protected:
 	map<string, ServantPtr> _servants;
 
 	TC_ThreadLock           _monitor;
+
+	CoroutineScheduler     *_coroSched;
 
 };
 

@@ -816,6 +816,14 @@ void TC_EpollServer::Handle::close(uint32_t uid, int fd)
     _pEpollServer->close(uid, fd);
 }
 
+void TC_EpollServer::Handle::notifyFilter()
+{
+    TC_ThreadLock::Lock lock(_lsPtr->monitor);
+
+    //如何做到不唤醒所有handle呢？
+    _lsPtr->monitor.notifyAll();
+}
+
 void TC_EpollServer::Handle::run()
 {
     initialize();

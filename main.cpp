@@ -6,9 +6,17 @@
 using namespace std;
 using namespace tars;
 
+bool        OpenCoroutine;
+size_t CoroutineMemSize = 1073741824;
+uint32_t CoroutineStackSize = 1310272;
+
 
 int main()
 {
+
+	OpenCoroutine = true;
+
+///////////////////////////////////////////////
 
 	TC_EpollServerPtr _epollServer = make_shared<TC_EpollServer>(3);
 

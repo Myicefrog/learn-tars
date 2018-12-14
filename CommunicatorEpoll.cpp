@@ -70,6 +70,14 @@ void CommunicatorEpoll::notify(size_t iSeq,ReqInfoQueue * msgQueue)
     }
 }
 
+void CommunicatorEpoll::notifyDel(size_t iSeq)
+{
+    if(_notify[iSeq].bValid && NULL != _notify[iSeq].stFDInfo.p)
+    {
+        _ep.mod(_notify[iSeq].notify.getfd(),(long long)&_notify[iSeq].stFDInfo, EPOLLIN);
+    }
+}
+
 void CommunicatorEpoll::run()
 {
     while (true)

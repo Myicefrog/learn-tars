@@ -94,6 +94,8 @@ public:
 
 	void notify(size_t iSeq,ReqInfoQueue * pReqQueue);
 
+	void notifyDel(size_t iSeq);
+
 	void pushAsyncThreadQueue(ReqMessage * msg);
 
 protected:

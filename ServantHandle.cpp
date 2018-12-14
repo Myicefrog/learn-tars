@@ -1,6 +1,10 @@
 #include "ServantHandle.h"
 #include "ServantHelper.h"
 
+extern bool        OpenCoroutine;
+extern size_t CoroutineMemSize;
+extern uint32_t CoroutineStackSize;
+
 namespace tars
 {
 
@@ -64,5 +68,146 @@ void ServantHandle::handle(const TC_EpollServer::tagRecvData &stRecvData)
 
 }
 
+void ServantHandle::run()
+{
+	initialize();
+
+	if(!OpenCoroutine)
+	{
+		cout<<"OpenCoroutine false"<<endl;
+		handleImp();
+	}
+	else
+	{
+		cout<<"OpenCoroutine right"<<endl;		
+
+		size_t iCoroutineNum = (CoroutineMemSize > CoroutineStackSize) ? (CoroutineMemSize / (CoroutineStackSize * 4)) : 1;
+
+		if(iCoroutineNum < 1)
+			iCoroutineNum = 1;
+
+		cout<<"iCoroutineNum is "<<iCoroutineNum<<endl;
+
+		_coroSched = new CoroutineScheduler();
+        _coroSched->init(iCoroutineNum, CoroutineStackSize);
+        _coroSched->setHandle(this);
+
+        uint32_t iRet1 = _coroSched->createCoroutine(std::bind(&ServantHandle::handleRequest, this));
+
+		cout<<"ServantHandle::run iRet1 is "<<iRet1<<endl;
+
+		ServantProxyThreadData * pSptd = ServantProxyThreadData::getData();
+
+		pSptd->_sched = _coroSched;
+
+		cout<<"_coroSched->tars_run()"<<endl;
+
+        while (!getEpollServer()->isTerminate())
+        {
+            _coroSched->tars_run();
+        }
+
+		cout<<"_coroSched->terminate()"<<endl;
+        _coroSched->terminate();
+
+        _coroSched->destroy();
+
+        stopHandle();	    				
+
+	}
+
+}
+
+void ServantHandle::handleRequest()
+{
+	cout<<"enter ServantHandle::handleRequest()"<<endl;
+
+	bool bYield = false;
+	while (!getEpollServer()->isTerminate())
+	{
+		bool bServerReqEmpty = false;
+        
+		{
+            TC_ThreadLock::Lock lock(_lsPtr->monitor);
+
+           // if (allAdapterIsEmpty() && allFilterIsEmpty())
+            {
+                if(_coroSched->getResponseCoroSize() > 0)
+                {
+                    bServerReqEmpty = true;
+                }
+                else
+                {
+                    _lsPtr->monitor.timedWait(3000);
+                }
+            }
+        }
+
+        if(bServerReqEmpty)
+        {
+            _coroSched->yield();
+
+            continue;
+        }
+	
+		bYield = false;
+
+		TC_EpollServer::tagRecvData* recv = NULL;
+
+		TC_EpollServer::BindAdapterPtr& adapter = _lsPtr;
+
+		bool bFlag = true;
+
+		int    iLoop = 100;
+
+		while(bFlag && iLoop > 0)
+		{
+			--iLoop;
+		
+			if(adapter->waitForRecvQueue(recv, 0))
+			{
+				cout<<"ServantHandle::handleRequest::waitForRecvQueue"<<endl;
+				bYield = true;
+
+				TC_EpollServer::tagRecvData& stRecvData = *recv;
+
+				stRecvData.adapter = adapter;
+
+				uint32_t iRet = _coroSched->createCoroutine(std::bind(&ServantHandle::handleRecvData, this, recv));
+
+				//handle(*recv);
+                
+				cout<<"ServantHandle::handleRequest iRet is "<<iRet<<endl;
+
+				if(iRet == 0)
+				{
+					delete recv;
+					recv = NULL;
+				} 
+				
+			}
+			else
+			{
+				bFlag = false;
+				bYield = false;
+			}
+			
+	   }
+
+	   if(iLoop == 0)
+       		bYield = false;
+
+		if(!bYield)
+    	{
+    		_coroSched->yield();
+    	}
+	}
+}
+
+void ServantHandle::handleRecvData(TC_EpollServer::tagRecvData *stRecvData)
+{
+	cout<<"enter ServantHandle::handleRecvData"<<endl;
+	handle(*stRecvData);
+}
 
 }

@@ -94,6 +94,8 @@ public:
 
         virtual void initialize() {};
 
+		virtual void notifyFilter();
+
 		void setHandleGroup(TC_EpollServer::BindAdapterPtr& lsPtr);
 
 		friend class BindAdapter;
@@ -146,6 +148,10 @@ public:
 
 		}
 
+	public:
+	
+        TC_ThreadLock   monitor;
+
     protected:
 
         friend class TC_EpollServer;
@@ -159,8 +165,6 @@ public:
 
         recv_queue      _rbuffer;		
         
-        TC_ThreadLock   monitor;
-	
 		string         _name;
  
 	};

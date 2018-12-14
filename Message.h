@@ -3,6 +3,7 @@
 #include "Global.h"
 #include "tc_loop_queue.h"
 #include "tc_monitor.h"
+#include "CoroutineScheduler.h"
 #include <string>
 #include <memory>
 
