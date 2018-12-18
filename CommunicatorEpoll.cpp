@@ -1,4 +1,5 @@
 #include "CommunicatorEpoll.h"
+#include "Communicator.h"
 #include "ObjectProxy.h"
 #include "AsyncProcThread.h"
 
@@ -6,6 +7,41 @@ using namespace std;
 
 namespace tars
 {
+CommunicatorEpoll::CommunicatorEpoll(Communicator * pCommunicator, size_t netThreadSeq)
+: _communicator(pCommunicator)
+, _terminate(false)
+, _asyncThreadNum(3)
+, _asyncSeq(0)
+, _netThreadSeq(netThreadSeq)
+{
+    _ep.create(1024);
+
+    _shutdown.createSocket();
+    _ep.add(_shutdown.getfd(), 0, EPOLLIN);
+
+	_objectProxyFactory = new ObjectProxyFactory(this);
+
+	//异步线程数目
+	if(_asyncThreadNum == 0)
+    {
+        _asyncThreadNum = 3;
+    }
+
+    //创建异步线程
+    for(size_t i = 0; i < _asyncThreadNum; ++i)
+    {
+        _asyncThread[i] = new AsyncProcThread(10000);
+        _asyncThread[i]->start();
+    }	
+
+    //初始化请求的事件通知
+    for(size_t i = 0; i < 2048; ++i)
+    {
+        _notify[i].bValid = false;
+    }
+}
+
+
 CommunicatorEpoll::CommunicatorEpoll(size_t _netThreadSeq)
 : _asyncThreadNum(3)
 , _asyncSeq(0)
@@ -15,6 +51,7 @@ CommunicatorEpoll::CommunicatorEpoll(size_t _netThreadSeq)
     _shutdown.createSocket();
     _ep.add(_shutdown.getfd(), 0, EPOLLIN);
 
+	_objectProxyFactory = new ObjectProxyFactory(this);
 
 	//异步线程数目
 	if(_asyncThreadNum == 0)
@@ -78,9 +115,19 @@ void CommunicatorEpoll::notifyDel(size_t iSeq)
     }
 }
 
+ObjectProxy * CommunicatorEpoll::getObjectProxy(const string& ip, const uint16_t& port)
+{
+    return _objectProxyFactory->getObjectProxy(ip, port);
+}
+
 void CommunicatorEpoll::run()
 {
-    while (true)
+
+    ServantProxyThreadData * pSptd = ServantProxyThreadData::getData();
+    assert(pSptd != NULL);
+    pSptd->_netThreadSeq = (int)_netThreadSeq;
+
+    while (!_terminate)
     {
         try
         {
@@ -109,6 +156,12 @@ void CommunicatorEpoll::run()
     }
 }
 
+void CommunicatorEpoll::terminate()
+{
+    _terminate = true;
+    //通知epoll响应
+    _ep.mod(_shutdown.getfd(), 0, EPOLLOUT);
+}
 
 void CommunicatorEpoll::handle(FDInfo * pFDInfo, uint32_t events)
 {

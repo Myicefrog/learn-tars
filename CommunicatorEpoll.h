@@ -11,6 +11,10 @@
 namespace tars
 {
 
+class Communicator;
+class ObjectProxy;
+class ObjectProxyFactory;
+
 struct FDInfo
 {
     enum
@@ -84,9 +88,15 @@ public:
 	
 	CommunicatorEpoll(size_t _netThreadSeq);
 
+	CommunicatorEpoll(Communicator * pCommunicator, size_t _netThreadSeq);
+
 	virtual ~CommunicatorEpoll();
 
+	ObjectProxy * getObjectProxy(const string& ip, const uint16_t& port);
+
 	virtual void run();
+
+	void terminate();
 
 	void addFd(int fd,FDInfo * info, uint32_t events);
 
@@ -108,17 +118,25 @@ protected:
 	
 protected:
 
+	Communicator *         _communicator;
+
 	NotifyInfo             _notify[2048];
 
 	TC_Socket              _shutdown;
+
+	bool                   _terminate;
 
 	TC_Epoller             _ep;
 
 	size_t 				   _asyncThreadNum;
 
-	AsyncProcThread *      _asyncThread[1024];
-
 	size_t                 _asyncSeq;
+
+	size_t                 _netThreadSeq;
+
+	ObjectProxyFactory *   _objectProxyFactory;
+
+	AsyncProcThread *      _asyncThread[1024];
 };
 
 

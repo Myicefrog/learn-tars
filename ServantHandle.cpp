@@ -194,8 +194,10 @@ void ServantHandle::handleRequest()
 			
 	   }
 
-	   if(iLoop == 0)
+	   	if(iLoop == 0)
+		{
        		bYield = false;
+		}
 
 		if(!bYield)
     	{

@@ -1,4 +1,5 @@
 #include "AsyncProcThread.h"
+#include "Communicator.h"
 #include "ServantProxy.h"
 #include <iostream>
 
@@ -65,6 +66,9 @@ void AsyncProcThread::run()
 
         if (_msgQueue->pop_front(msg))
         {
+            ServantProxyThreadData * pServantProxyThreadData = ServantProxyThreadData::getData();
+            assert(pServantProxyThreadData != NULL);
+
             try
             {
 				std::shared_ptr<ReqMessage> msgPtr(msg);

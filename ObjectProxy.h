@@ -41,6 +41,11 @@ public:
         return _id;
     }
 
+    inline void setServantProxy(ServantProxy * pServantProxy)
+    {
+        _servantProxy = pServantProxy;
+    }
+
 protected:
 	
 	int                                   _fd;
@@ -52,6 +57,8 @@ protected:
 	std::unique_ptr<TC_TimeoutQueueNew<ReqMessage*>> _timeoutQueue;
 
 	uint32_t                              _id;
+
+	ServantProxy *                        _servantProxy;
 };
 
 }

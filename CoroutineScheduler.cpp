@@ -472,7 +472,7 @@ void CoroutineScheduler::tars_run()
 
         if(!CoroutineInfo::CoroutineHeadEmpty(&_active))
         {
-			std::cout<<"CoroutineHeadEmpty _active "<<endl;
+			//std::cout<<"CoroutineHeadEmpty _active "<<endl;
             int iLoop = 100;
             while(iLoop > 0 && !CoroutineInfo::CoroutineHeadEmpty(&_active))
             {
@@ -490,7 +490,7 @@ void CoroutineScheduler::tars_run()
         if(!CoroutineInfo::CoroutineHeadEmpty(&_avail))
         {
 			
-			std::cout<<"CoroutineHeadEmpty _avail "<<endl;
+			//std::cout<<"CoroutineHeadEmpty _avail "<<endl;
             int iLoop = 100;
             while(iLoop > 0 && !CoroutineInfo::CoroutineHeadEmpty(&_avail))
             {
@@ -513,7 +513,7 @@ void CoroutineScheduler::yield(bool bFlag)
     {
         putbyself(_currentCoro->getUid());
 
-		std::cout<<"_currentCoro->getUid() is "<<_currentCoro->getUid()<<endl;
+		//std::cout<<"_currentCoro->getUid() is "<<_currentCoro->getUid()<<endl;
     }
 
     moveToInactive(_currentCoro);

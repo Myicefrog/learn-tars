@@ -1,4 +1,5 @@
 #include "ServantProxy.h"
+#include "ObjectProxy.h"
 
 namespace tars
 {
@@ -75,7 +76,12 @@ void SeqManager::del(uint16_t iSeq)
 
 
 ServantProxyThreadData::ServantProxyThreadData()
-: _reqQNo(0)
+: _queueInit(false)
+, _reqQNo(0)
+, _netSeq(0)
+, _netThreadSeq(-1)
+, _objectProxyNum(0)
+, _objectProxy(NULL)
 , _sched(NULL)
 {
 }
@@ -132,6 +138,150 @@ ServantProxyThreadData * ServantProxyThreadData::getData()
 ServantProxyCallback::ServantProxyCallback()
 : _bNetThreadProcess(false)
 {
+}
+
+ServantProxy::ServantProxy(Communicator * pCommunicator, ObjectProxy ** ppObjectProxy, size_t iClientThreadNum)
+: _communicator(pCommunicator)
+, _objectProxy(ppObjectProxy)
+, _objectProxyNum(iClientThreadNum)
+, _queueSize(1000)
+{
+
+    for(size_t i = 0;i < _objectProxyNum; ++i)
+    {
+       (*(_objectProxy + i))->setServantProxy(this);
+    }
+
+}
+
+ServantProxy::~ServantProxy()
+{
+}
+
+void ServantProxy::tars_invoke(const string& sFuncName,
+                             const string& request,
+                             string& resp)
+{
+	cout<<"enter tars_invoke"<<endl;
+
+
+	ReqMessage * msg = new ReqMessage();
+
+	msg->init(ReqMessage::SYNC_CALL);
+
+	msg->request = sFuncName + ":" + request;
+
+	invoke(msg);
+
+	resp = msg->response;
+
+	delete msg;
+	
+	msg = NULL;
+
+}
+
+void ServantProxy::invoke(ReqMessage * msg, bool bCoroAsync)
+{
+
+	ServantProxyThreadData * pSptd = ServantProxyThreadData::getData();
+
+	ObjectProxy * pObjProxy = NULL;
+    ReqInfoQueue * pReqQ    = NULL;
+
+
+	selectNetThreadInfo(pSptd,pObjProxy,pReqQ);
+
+    struct timeval tv; 
+    ::gettimeofday(&tv, NULL);
+    msg->iBeginTime = tv.tv_sec * (int64_t)1000 + tv.tv_usec/1000;
+
+	msg->pObjectProxy = pObjProxy;
+
+    if(msg->eType == ReqMessage::SYNC_CALL)
+    {
+        msg->bMonitorFin = false;
+
+        msg->pMonitor = new ReqMonitor;
+    }
+
+    //通知网络线程
+    bool bEmpty = false;
+    bool bSync  = (msg->eType == ReqMessage::SYNC_CALL);
+
+    if(!pReqQ->push_back(msg,bEmpty))
+    {
+        delete msg;
+        msg = NULL;
+
+        pObjProxy->getCommunicatorEpoll()->notify(pSptd->_reqQNo, pReqQ);
+
+        cout<<"client queue full"<<endl;
+    }
+
+	pObjProxy->getCommunicatorEpoll()->notify(pSptd->_reqQNo, pReqQ);
+
+
+	if(bSync)
+	{
+		if(!msg->bMonitorFin)
+        {
+        	TC_ThreadLock::Lock lock(*(msg->pMonitor));
+
+            //等待直到网络线程通知过来
+            if(!msg->bMonitorFin)
+            {
+            	msg->pMonitor->wait();
+            }
+        }
+	}
+
+
+}
+
+//选取一个网络线程对应的信息
+void ServantProxy::selectNetThreadInfo(ServantProxyThreadData * pSptd, ObjectProxy * & pObjProxy, ReqInfoQueue * & pReqQ)
+{
+    //指针为空 就new一个
+    if(!pSptd->_queueInit)
+    {
+        for(size_t i=0;i<_objectProxyNum;++i)
+        {
+            pSptd->_reqQueue[i] = new ReqInfoQueue(_queueSize);
+        }
+        pSptd->_objectProxyNum = _objectProxyNum;
+        pSptd->_objectProxy    = _objectProxy;
+        pSptd->_queueInit      = true;
+    }
+
+    if(_objectProxyNum == 1)
+    {
+        pObjProxy = *_objectProxy;
+        pReqQ     = pSptd->_reqQueue[0];
+    }
+    else
+    {
+        if(pSptd->_netThreadSeq >= 0)
+        {
+            //网络线程发起的请求
+            assert(pSptd->_netThreadSeq < static_cast<int>(_objectProxyNum));
+
+            pObjProxy = *(_objectProxy + pSptd->_netThreadSeq);
+            pReqQ     = pSptd->_reqQueue[pSptd->_netThreadSeq];
+        }
+        else
+        {
+            //用线程的私有数据来保存选到的seq
+            pObjProxy = *(_objectProxy + pSptd->_netSeq);
+            pReqQ     = pSptd->_reqQueue[pSptd->_netSeq];
+            pSptd->_netSeq++;
+
+			cout<<"pSptd->_netSeq is "<<pSptd->_netSeq<<endl;
+
+            if(pSptd->_netSeq == _objectProxyNum)
+                pSptd->_netSeq = 0;
+        }
+    }
 }
 
 }
