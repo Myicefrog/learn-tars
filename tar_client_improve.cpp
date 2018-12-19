@@ -22,12 +22,9 @@ int main()
 
 	comm.stringToProxy(host, port, &prx);
 
-	cout<<"check3 is "<<prx<<endl;
-
-
     string sReq("hello");
     string sRsp("");
-	string method("testHello");
+
 	HelloProxy* prx1 = (HelloProxy*)(prx);
 	
 	if(prx1)
@@ -37,6 +34,7 @@ int main()
 		{
     		int iRet = prx1->testHello(sReq, sRsp);
     		cout<<"sRsp:"<<sRsp<<endl;
+			cout<<"iRet is "<<iRet<<endl;
 
 		}
 	}

@@ -139,6 +139,11 @@ public:
                             const string& request,
                             string& resp);
 
+	virtual void tars_invoke_async(const string& sFuncName,
+							const string& request,
+							const ServantProxyCallbackPtr& callback);
+
+
 public:
 
 	Communicator* tars_communicator() { return _communicator; }

@@ -19,7 +19,7 @@ int main()
 
 	msg->init(ReqMessage::SYNC_CALL);
 
-	msg->request = "hello";
+	msg->request = "testHello:hello";
 
 	msg->pMonitor = new ReqMonitor;
 

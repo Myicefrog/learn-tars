@@ -37,12 +37,16 @@ int Servant::dispatch(const string &request, vector<char> &buffer)
 
 	int ret = 0;
 
+	ret = onDispatch(request, buffer);
+
+/*	
     {
 		//这里为什么要加锁
         //TC_LockT<TC_ThreadRecMutex> lock(*this);
 
         ret = doRequest(request, buffer);
     }
+*/
     return ret;
 }
 

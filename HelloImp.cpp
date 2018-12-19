@@ -45,3 +45,25 @@ int HelloImp::doRequest(const string& request, vector<char> &buffer)
 
 	return 0;
 }
+
+int HelloImp::test(const std::string & sReq,vector<char> &buffer)
+{
+	size_t pos = sReq.find(":");
+	string requestId = sReq.substr(0,pos);
+	string response = requestId + ":" + "test response";
+	cout<<"response is "<<response<<endl;
+	buffer.assign(response.begin(),response.end());
+	return 0;
+}
+
+int HelloImp::testHello(const std::string & sReq,vector<char> &buffer)
+{
+
+	size_t pos = sReq.find(":");
+	string requestId = sReq.substr(0,pos);
+	string response = requestId + ":" + "testHello response";
+	cout<<"response is "<<response<<endl;
+	buffer.assign(response.begin(),response.end());
+	return 0;
+
+}

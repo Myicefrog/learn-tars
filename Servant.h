@@ -31,6 +31,8 @@ public:
 
 	virtual int dispatch(const string &request, vector<char> &buffer);
 
+	virtual int onDispatch(const string &request, vector<char> &buffer) { return -1; }
+
 	virtual int doRequest(const string &request, vector<char> &buffer) { return -1; }
 
 protected:

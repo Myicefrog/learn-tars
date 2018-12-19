@@ -50,7 +50,7 @@ int main()
 
 	msg->callback = cb;
 
-	msg->request = "hello,world";
+	msg->request = "testHello:hello,world";
 
 
 	string host = "127.0.0.1";

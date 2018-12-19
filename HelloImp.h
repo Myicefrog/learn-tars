@@ -1,9 +1,9 @@
 #ifndef _HelloImp_H_
 #define _HelloImp_H_
 
-#include "Servant.h"
+#include "Hello.h"
 
-class HelloImp : public tars::Servant
+class HelloImp : public Hello
 {
 public:
 
@@ -14,6 +14,11 @@ public:
 	virtual void destroy();
 
 	virtual int doRequest(const string& request, vector<char> &buffer);
+
+	virtual int test(const std::string & sReq,vector<char> &buffer);
+
+	virtual int testHello(const std::string & sReq,vector<char> &buffer);
+	
 };
 
 #endif

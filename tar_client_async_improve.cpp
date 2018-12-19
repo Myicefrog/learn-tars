@@ -1,105 +1,48 @@
 #include <iostream>
 #include <string>
-#include "CommunicatorEpoll.h"
-#include "ObjectProxy.h"
-#include "ServantProxy.h"
+#include "Communicator.h"
+#include "Hello.h"
 
 using namespace std;
 using namespace tars;
 
-class HelloPrxCallback: public tars::ServantProxyCallback
+class HelloCallBack: public HelloPrxCallback
 {
 public:
 
-	virtual ~HelloPrxCallback(){}
+	HelloCallBack(){}
+
+	virtual ~HelloCallBack(){}
 
     virtual void callback_testHello(const std::string& sRsp)
     {
         cout<<"callback_testHello :"<< "sRsp:" << sRsp <<endl; 
     }	
-	
-public:
-
-	virtual int onDispatch(tars::ReqMessagePtr msg)
-	{
-		string sRsp = msg->response;
-		
-		callback_testHello(sRsp);
-
-		return 0;
-	}	
 };
-
-typedef shared_ptr<HelloPrxCallback> HelloPrxCallbackPtr;
-
 
 int main()
 {
+	Communicator comm;
 
-	CommunicatorEpoll* _communicatorEpoll =  new CommunicatorEpoll(0);
-	
-	_communicatorEpoll->start();
-
-//////////////////////////////////////////////////////////////////////
-
-	HelloPrxCallbackPtr cb = make_shared<HelloPrxCallback>();
-	
-	ReqMessage * msg = new ReqMessage();
-
-	msg->init(ReqMessage::ASYNC_CALL);
-
-	msg->callback = cb;
-
-	msg->request = "hello,world";
-
+	ServantProxy* prx = NULL;	
 
 	string host = "127.0.0.1";
-    uint16_t port = 9877;
 
-	ObjectProxy * pObjectProxy = new ObjectProxy(_communicatorEpoll, host, port);
+	uint16_t port = 9877;
 
-	msg->pObjectProxy = pObjectProxy;
+	comm.stringToProxy(host, port, &prx);
 
-	struct timeval tv;
-	::gettimeofday(&tv, NULL);
-    msg->iBeginTime = tv.tv_sec * (int64_t)1000 + tv.tv_usec/1000;
+	HelloProxy* prx1 = (HelloProxy*)(prx);
 
+	string sReq("hello world");
 
-	if(msg->eType == ReqMessage::SYNC_CALL)
-	{
-		msg->bMonitorFin = false;
+	HelloPrxCallback* cbptr = new HelloCallBack();
 
-		msg->pMonitor = new ReqMonitor;
-	}
+	shared_ptr<HelloPrxCallback> cb(cbptr); 	
 
-	ReqInfoQueue * pReqQ    = new ReqInfoQueue(1000);
+	prx1->async_testHello(cb, sReq);
 
-	bool bEmpty = false;	
-	
-	bool bSync  = (msg->eType == ReqMessage::SYNC_CALL);
-
-	pReqQ->push_back(msg,bEmpty);
-
-	_communicatorEpoll->notify(0, pReqQ);
-
-	if(bSync)
-	{
-
-		if(!msg->bMonitorFin)
-    	{
-    		TC_ThreadLock::Lock lock(*(msg->pMonitor));
-
-        	//等待直到网络线程通知过来
-        	if(!msg->bMonitorFin)
-        	{
-        		msg->pMonitor->wait();
-        	}
-		}
-		
-		cout<<"msg->response is "<<msg->response<<endl;
-	
-		return 0;
-	}
-	
 	getchar();
+
+	return 0;
 }

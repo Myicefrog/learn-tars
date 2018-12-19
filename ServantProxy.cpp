@@ -162,9 +162,6 @@ void ServantProxy::tars_invoke(const string& sFuncName,
                              const string& request,
                              string& resp)
 {
-	cout<<"enter tars_invoke"<<endl;
-
-
 	ReqMessage * msg = new ReqMessage();
 
 	msg->init(ReqMessage::SYNC_CALL);
@@ -178,6 +175,23 @@ void ServantProxy::tars_invoke(const string& sFuncName,
 	delete msg;
 	
 	msg = NULL;
+
+}
+
+void ServantProxy::tars_invoke_async(const string& sFuncName,
+                            const string& request,
+                            const ServantProxyCallbackPtr& callback)
+{
+
+	ReqMessage * msg = new ReqMessage();
+
+	msg->init(ReqMessage::ASYNC_CALL);
+
+	msg->callback = callback;
+
+	msg->request = sFuncName + ":" + request;
+
+	invoke(msg);
 
 }
 
