@@ -1,9 +1,10 @@
 #include "ServantHandle.h"
 #include "ServantHelper.h"
+#include "Application.h"
 
-extern bool        OpenCoroutine;
-extern size_t CoroutineMemSize;
-extern uint32_t CoroutineStackSize;
+//extern bool        OpenCoroutine;
+//extern size_t CoroutineMemSize;
+//extern uint32_t CoroutineStackSize;
 
 namespace tars
 {
@@ -39,11 +40,30 @@ ServantHandle::~ServantHandle()
 
 void ServantHandle::initialize()
 {
-    ServantPtr servant = ServantHelperManager::getInstance()->create(_lsPtr->getName());
-    _servants[servant->getName()] = servant;
+	map<string, TC_EpollServer::BindAdapterPtr>::iterator adpit;
 
-    servant->setHandle(this);
-    servant->initialize();
+	map<string, TC_EpollServer::BindAdapterPtr>& adapters = _handleGroup->adapters;
+
+	for (adpit = adapters.begin(); adpit != adapters.end(); ++adpit)
+	{
+
+    	ServantPtr servant = ServantHelperManager::getInstance()->create(adpit->first);
+    	
+		_servants[servant->getName()] = servant;
+	}
+
+	map<string, ServantPtr>::iterator it = _servants.begin();
+
+	while(it != _servants.end())
+	{
+
+    	//servant->setHandle(this);
+    	//servant->initialize();
+		it->second->setHandle(this);
+		it->second->initialize();
+
+		++it;
+	}
 
 }
 
@@ -72,7 +92,7 @@ void ServantHandle::run()
 {
 	initialize();
 
-	if(!OpenCoroutine)
+	if(!ServerConfig::OpenCoroutine)
 	{
 		cout<<"OpenCoroutine false"<<endl;
 		handleImp();
@@ -81,7 +101,7 @@ void ServantHandle::run()
 	{
 		cout<<"OpenCoroutine right"<<endl;		
 
-		size_t iCoroutineNum = (CoroutineMemSize > CoroutineStackSize) ? (CoroutineMemSize / (CoroutineStackSize * 4)) : 1;
+		size_t iCoroutineNum = (ServerConfig::CoroutineMemSize > ServerConfig::CoroutineStackSize) ? (ServerConfig::CoroutineMemSize / (ServerConfig::CoroutineStackSize * 4)) : 1;
 
 		if(iCoroutineNum < 1)
 			iCoroutineNum = 1;
@@ -89,7 +109,7 @@ void ServantHandle::run()
 		cout<<"iCoroutineNum is "<<iCoroutineNum<<endl;
 
 		_coroSched = new CoroutineScheduler();
-        _coroSched->init(iCoroutineNum, CoroutineStackSize);
+        _coroSched->init(iCoroutineNum, ServerConfig::CoroutineStackSize);
         _coroSched->setHandle(this);
 
         uint32_t iRet1 = _coroSched->createCoroutine(std::bind(&ServantHandle::handleRequest, this));
@@ -128,7 +148,8 @@ void ServantHandle::handleRequest()
 		bool bServerReqEmpty = false;
         
 		{
-            TC_ThreadLock::Lock lock(_lsPtr->monitor);
+            //TC_ThreadLock::Lock lock(_lsPtr->monitor);
+            TC_ThreadLock::Lock lock(_handleGroup->monitor);
 
            // if (allAdapterIsEmpty() && allFilterIsEmpty())
             {
@@ -138,7 +159,8 @@ void ServantHandle::handleRequest()
                 }
                 else
                 {
-                    _lsPtr->monitor.timedWait(3000);
+                    //_lsPtr->monitor.timedWait(3000);
+                    _handleGroup->monitor.timedWait(3000);
                 }
             }
         }
@@ -154,49 +176,52 @@ void ServantHandle::handleRequest()
 
 		TC_EpollServer::tagRecvData* recv = NULL;
 
-		TC_EpollServer::BindAdapterPtr& adapter = _lsPtr;
+		//TC_EpollServer::BindAdapterPtr& adapter = _lsPtr;
 
-		bool bFlag = true;
+		map<string, TC_EpollServer::BindAdapterPtr>& adapters = _handleGroup->adapters;
 
-		int    iLoop = 100;
+		for (map<string, TC_EpollServer::BindAdapterPtr>::iterator it = adapters.begin(); it != adapters.end(); ++it)
+        {
 
-		while(bFlag && iLoop > 0)
-		{
-			--iLoop;
+			TC_EpollServer::BindAdapterPtr& adapter = it->second;
+
+			bool bFlag = true;
+
+			int    iLoop = 100;
+
+			while(bFlag && iLoop > 0)
+			{
+				--iLoop;
 		
-			if(adapter->waitForRecvQueue(recv, 0))
-			{
-				cout<<"ServantHandle::handleRequest::waitForRecvQueue"<<endl;
-				bYield = true;
-
-				TC_EpollServer::tagRecvData& stRecvData = *recv;
-
-				stRecvData.adapter = adapter;
-
-				uint32_t iRet = _coroSched->createCoroutine(std::bind(&ServantHandle::handleRecvData, this, recv));
-
-				//handle(*recv);
-                
-				cout<<"ServantHandle::handleRequest iRet is "<<iRet<<endl;
-
-				if(iRet == 0)
+				if(adapter->waitForRecvQueue(recv, 0))
 				{
-					delete recv;
-					recv = NULL;
-				} 
-				
-			}
-			else
-			{
-				bFlag = false;
-				bYield = false;
-			}
-			
-	   }
+					cout<<"ServantHandle::handleRequest::waitForRecvQueue"<<endl;
+					bYield = true;
 
-	   	if(iLoop == 0)
-		{
-       		bYield = false;
+					TC_EpollServer::tagRecvData& stRecvData = *recv;
+
+					stRecvData.adapter = adapter;
+
+					uint32_t iRet = _coroSched->createCoroutine(std::bind(&ServantHandle::handleRecvData, this, recv));
+
+					if(iRet == 0)
+					{
+						delete recv;
+						recv = NULL;
+					} 
+				}
+				else
+				{
+					bFlag = false;
+					bYield = false;
+				}
+			
+	   		}
+
+	   		if(iLoop == 0)
+			{
+       			bYield = false;
+			}
 		}
 
 		if(!bYield)

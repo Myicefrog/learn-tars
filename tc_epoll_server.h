@@ -67,10 +67,20 @@ public:
         uint16_t        port;           /**远程连接的端口*/
     };
 
+   struct HandleGroup
+   {
+        string                      name;
+        TC_ThreadLock               monitor;
+        vector<HandlePtr>           handles;
+        map<string, BindAdapterPtr> adapters;
+   };
+
     typedef TC_ThreadQueue<tagRecvData*, deque<tagRecvData*> > recv_queue;
     typedef TC_ThreadQueue<tagSendData*, deque<tagSendData*> > send_queue;
     typedef recv_queue::queue_type recv_queue_type;
 
+    class HandleGroup;
+    typedef shared_ptr<HandleGroup> HandleGroupPtr;
 
     class Handle : public TC_Thread, public TC_ThreadLock
     {
@@ -98,17 +108,23 @@ public:
 
 		void setHandleGroup(TC_EpollServer::BindAdapterPtr& lsPtr);
 
+		void setHandleGroup(HandleGroupPtr& pHandleGroup);
+
+		HandleGroupPtr& getHandleGroup();	
+
 		friend class BindAdapter;
 
     protected:
 
         TC_EpollServer  *_pEpollServer;
 
+		HandleGroupPtr _handleGroup;
+
 		BindAdapterPtr  _lsPtr;
 
         uint32_t  _iWaitTime;
 
-        vector<Handle>           handles;
+        //vector<Handle>           handles;
 
    protected:
 
@@ -131,6 +147,10 @@ public:
 
 		string getName() const;
 
+		void setHandleNum(int n);
+
+		int getHandleNum();
+
         void setEndpoint(const string &str,const int &port);
 
         TC_Endpoint getEndpoint() const;
@@ -145,12 +165,18 @@ public:
 
         template<typename T> void setHandle()
 		{
-
+		
+			BindAdapterPtr thisptr(this);	
+			_pEpollServer->setHandleGroup<T>(_handleGroupName, _iHandleNum, thisptr);
 		}
+
+		void setHandleGroupName(const string& handleGroupName);
+
+		string getHandleGroupName() const;
 
 	public:
 	
-        TC_ThreadLock   monitor;
+        //TC_ThreadLock   monitor;
 
     protected:
 
@@ -159,6 +185,8 @@ public:
 
         TC_EpollServer  *_pEpollServer;
 
+		HandleGroupPtr  _handleGroup;
+
         TC_Socket       _s;
 
         TC_Endpoint     _ep;
@@ -166,6 +194,10 @@ public:
         recv_queue      _rbuffer;		
         
 		string         _name;
+
+		string         _handleGroupName;
+
+		size_t         _iHandleNum;
  
 	};
 
@@ -339,11 +371,56 @@ public:
 
 	unsigned int getNetThreadNum() { return _netThreadNum; }
 
+	void stopThread();
+
     vector<TC_EpollServer::NetThread*> getNetThread() { return _netThreads; }
     
     void send(unsigned int uid, const string &s, const string &ip, uint16_t port, int fd);
 
 	void close(unsigned int uid, int fd);
+
+    template<class T> void setHandleGroup(const string& groupName, int32_t handleNum, BindAdapterPtr adapter)
+    {
+        map<string, HandleGroupPtr>::iterator it = _handleGroups.find(groupName);
+
+        if (it == _handleGroups.end())
+        {
+            //HandleGroupPtr hg = new HandleGroup();
+			
+			HandleGroup* hgptr = new HandleGroup();
+
+			HandleGroupPtr hg(hgptr);
+
+            hg->name = groupName;
+
+            adapter->_handleGroup = hg;
+
+            for (int32_t i = 0; i < handleNum; ++i)
+            {
+				//ServantHandle* shptr = new T();
+				
+				Handle* hptr = new T();
+
+				HandlePtr handle(hptr);
+
+                //HandlePtr handle = new T();
+
+                handle->setEpollServer(this);
+
+                handle->setHandleGroup(hg);
+
+                hg->handles.push_back(handle);
+            }
+
+            _handleGroups[groupName] = hg;
+
+            it = _handleGroups.find(groupName);
+        }
+        it->second->adapters[adapter->getName()] = adapter;
+
+        adapter->_handleGroup = it->second;
+    }
+
 
 	NetThread* getNetThreadOfFd(int fd)
     {
@@ -351,6 +428,8 @@ public:
     }
 
 	int  bind(TC_EpollServer::BindAdapterPtr &lsPtr);
+
+	void startHandle();
 
 	void addConnection(NetThread::Connection * cPtr, int fd, int iType);
 
@@ -371,6 +450,10 @@ private:
 	std::vector<NetThread*>        _netThreads;
 
 	unsigned int                   _netThreadNum;
+
+	bool                           _handleStarted;
+
+	map<string, HandleGroupPtr>    _handleGroups;
 };
 
 typedef shared_ptr<TC_EpollServer> TC_EpollServerPtr;

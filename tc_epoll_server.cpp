@@ -31,6 +31,7 @@ namespace tars
 TC_EpollServer::TC_EpollServer(unsigned int iNetThreadNum)
 : _bTerminate(false)
 , _netThreadNum(iNetThreadNum)
+, _handleStarted(false)
 {
 	for (size_t i = 0; i < iNetThreadNum; ++i)
 	{
@@ -65,6 +66,47 @@ int  TC_EpollServer::bind(TC_EpollServer::BindAdapterPtr& lsPtr)
     }
 
     return iRet;
+}
+
+void TC_EpollServer::startHandle()
+{
+    if (!_handleStarted)
+    {
+        _handleStarted = true;
+
+        for (auto& kv : _handleGroups)
+        {
+            auto& hds = kv.second->handles;
+
+            for (auto& handle : hds)
+            {
+                if (!handle->isAlive())
+                {
+                    handle->start();
+                }
+            }
+        }
+    }
+}
+
+void TC_EpollServer::stopThread()
+{
+    for (auto& kv : _handleGroups)
+    {
+        {
+            TC_ThreadLock::Lock lock(kv.second->monitor);
+
+            kv.second->monitor.notifyAll();
+        }
+        auto& hds = kv.second->handles;
+        for (auto& handle : hds)
+        {
+            if (handle->isAlive())
+            {
+                handle->getThreadControl().join();
+            }
+        }
+    }
 }
 
 void TC_EpollServer::addConnection(TC_EpollServer::NetThread::Connection * cPtr, int fd, int iType)
@@ -798,6 +840,7 @@ void TC_EpollServer::NetThread::delConnection(TC_EpollServer::NetThread::Connect
 
 TC_EpollServer::Handle::Handle()
 : _pEpollServer(NULL)
+, _handleGroup(NULL)
 , _iWaitTime(100)
 {
 }
@@ -818,10 +861,12 @@ void TC_EpollServer::Handle::close(uint32_t uid, int fd)
 
 void TC_EpollServer::Handle::notifyFilter()
 {
-    TC_ThreadLock::Lock lock(_lsPtr->monitor);
+    //TC_ThreadLock::Lock lock(_lsPtr->monitor);
+    TC_ThreadLock::Lock lock(_handleGroup->monitor);
 
     //如何做到不唤醒所有handle呢？
-    _lsPtr->monitor.notifyAll();
+    //_lsPtr->monitor.notifyAll();
+	_handleGroup->monitor.notifyAll();
 }
 
 void TC_EpollServer::Handle::run()
@@ -834,52 +879,60 @@ void TC_EpollServer::Handle::run()
 void TC_EpollServer::Handle::handleImp()
 {
     cout<<"Handle::handleImp"<<endl;
-    tagRecvData* recv = NULL;
 
     while(!getEpollServer()->isTerminate())
     {
         {
-            TC_ThreadLock::Lock lock(_lsPtr->monitor);
-
-            _lsPtr->monitor.timedWait(100);
-
+            //TC_ThreadLock::Lock lock(_lsPtr->monitor);
+            //_lsPtr->monitor.timedWait(100);
+            TC_ThreadLock::Lock lock(_handleGroup->monitor);
+	
+			_handleGroup->monitor.timedWait(100);
         }
 
-		BindAdapterPtr& adapters = _lsPtr;
+		//BindAdapterPtr& adapters = _lsPtr;
+    	tagRecvData* recv = NULL;
 
-		try
+		map<string, BindAdapterPtr>& adapters = _handleGroup->adapters;
+
+		for (auto& kv : adapters)
 		{
+			BindAdapterPtr& adapter = kv.second;
 
-        	while(adapters->waitForRecvQueue(recv, 0))
+			try
 			{
 
-				tagRecvData& stRecvData = *recv;
-
-				stRecvData.adapter = adapters;
-
-				if(stRecvData.isClosed)
+        		while(adapter->waitForRecvQueue(recv, 0))
 				{
-					cout<<"give info to real buisiness to close"<<endl;		
-				}
-				else
-				{
-					cout<<"Handle thread id is "<<id()<<endl;
-            		cout<<"handleImp recv uid  is "<<recv->uid<<endl;
+
+					tagRecvData& stRecvData = *recv;
+
+					stRecvData.adapter = adapter;
+
+					if(stRecvData.isClosed)
+					{
+						cout<<"give info to real buisiness to close"<<endl;		
+					}
+					else
+					{
+						cout<<"Handle thread id is "<<id()<<endl;
+            			cout<<"handleImp recv uid  is "<<recv->uid<<endl;
 					//sendResponse(recv->uid,recv->buffer, recv->ip, recv->port, recv->fd);
-					handle(stRecvData);
-				}
-				delete recv;
-            	recv = NULL;
-        	}
-		}
-		catch(...)
-		{
-			if(recv)
-            {
-            	close(recv->uid, recv->fd);
-                delete recv;
-                recv = NULL;
-            }
+						handle(stRecvData);
+					}
+					delete recv;
+            		recv = NULL;
+        		}
+			}
+			catch(...)
+			{
+				if(recv)
+            	{
+            		close(recv->uid, recv->fd);
+                	delete recv;
+                	recv = NULL;
+            	}
+			}
 		}
     }
 
@@ -899,13 +952,28 @@ void TC_EpollServer::Handle::setHandleGroup(TC_EpollServer::BindAdapterPtr& lsPt
     _lsPtr = lsPtr;
 }
 
+void TC_EpollServer::Handle::setHandleGroup(TC_EpollServer::HandleGroupPtr& pHandleGroup)
+{
+    TC_ThreadLock::Lock lock(*this);
+
+    _handleGroup = pHandleGroup;
+}
+
+TC_EpollServer::HandleGroupPtr& TC_EpollServer::Handle::getHandleGroup()
+{
+    return _handleGroup;
+}
+
 TC_EpollServer* TC_EpollServer::Handle::getEpollServer()
 {
     return _pEpollServer;
 }
 
 TC_EpollServer::BindAdapter::BindAdapter(TC_EpollServer *pEpollServer)
-:_pEpollServer(pEpollServer)
+: _pEpollServer(pEpollServer)
+, _handleGroup(NULL)
+, _handleGroupName("")
+, _iHandleNum(0)
 {
 }
 
@@ -926,6 +994,18 @@ string TC_EpollServer::BindAdapter::getName() const
     return _name;
 }
 
+int TC_EpollServer::BindAdapter::getHandleNum()
+{
+    return _iHandleNum;
+}
+
+void TC_EpollServer::BindAdapter::setHandleNum(int n)
+{
+    TC_ThreadLock::Lock lock(*this);
+
+    _iHandleNum = n;
+}
+
 void TC_EpollServer::BindAdapter::insertRecvQueue(const recv_queue::queue_type &vtRecvData, bool bPushBack)
 {
     {
@@ -939,9 +1019,11 @@ void TC_EpollServer::BindAdapter::insertRecvQueue(const recv_queue::queue_type &
         }
     }
 
-    TC_ThreadLock::Lock lock(monitor);
-
-    monitor.notify();
+    //TC_ThreadLock::Lock lock(monitor);
+    //monitor.notify();
+	TC_ThreadLock::Lock lock(_handleGroup->monitor);
+	_handleGroup->monitor.notify();
+	
 }
 
 bool TC_EpollServer::BindAdapter::waitForRecvQueue(tagRecvData* &recv, uint32_t iWaitTime)
@@ -978,6 +1060,16 @@ TC_Endpoint TC_EpollServer::BindAdapter::getEndpoint() const
 TC_Socket& TC_EpollServer::BindAdapter::getSocket()
 {
     return _s;
+}
+
+void TC_EpollServer::BindAdapter::setHandleGroupName(const string& handleGroupName)
+{
+    _handleGroupName = handleGroupName;
+}
+
+string TC_EpollServer::BindAdapter::getHandleGroupName() const
+{
+    return _handleGroupName;
 }
 
 }
