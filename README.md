@@ -32,8 +32,10 @@
 
 [5 进一步完善RPC Client（异步）](https://github.com/Myicefrog/learn-tars/wiki/5-%E8%BF%9B%E4%B8%80%E6%AD%A5%E5%AE%8C%E5%96%84RPC-Client%EF%BC%88%E5%BC%82%E6%AD%A5%EF%BC%89)
 
+[更多](https://github.com/Myicefrog/learn-tars/wiki)
 
-作者：路小饭 
+
+作者：路小饭  微信号：luguangfamily 邮箱490925498@qq.com
 
 ![微信](https://github.com/Myicefrog/tars-img/blob/master/img/mmqrcode1544579415883.png)
 
