@@ -35,7 +35,11 @@
 [更多](https://github.com/Myicefrog/learn-tars/wiki)
 
 
-作者：路小饭  微信号：luguangfamily 邮箱490925498@qq.com
+作者：路小饭  
+
+微信号：luguangfamily 
+
+邮箱490925498@qq.com
 
 ![微信](https://github.com/Myicefrog/tars-img/blob/master/img/mmqrcode1544579415883.png)
 
