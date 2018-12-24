@@ -19,6 +19,11 @@ class ServantHandle : public TC_EpollServer::Handle
 {
 public:
 
+    enum
+    {
+        HEART_BEAT_INTERVAL = 10, /**心跳间隔时间**/
+    };
+
 	ServantHandle();
 	
 	~ServantHandle();
@@ -34,6 +39,8 @@ protected:
 	virtual void handleRecvData(TC_EpollServer::tagRecvData *stRecvData);
 
 	virtual void stopHandle() {}
+
+	virtual void heartbeat();
 
 
 protected:

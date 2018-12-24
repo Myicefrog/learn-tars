@@ -160,10 +160,12 @@ void ServantHandle::handleRequest()
                 else
                 {
                     //_lsPtr->monitor.timedWait(3000);
-                    _handleGroup->monitor.timedWait(3000);
+                    _handleGroup->monitor.timedWait(3);
                 }
             }
         }
+
+		heartbeat();
 
         if(bServerReqEmpty)
         {
@@ -235,6 +237,28 @@ void ServantHandle::handleRecvData(TC_EpollServer::tagRecvData *stRecvData)
 {
 	cout<<"enter ServantHandle::handleRecvData"<<endl;
 	handle(*stRecvData);
+}
+
+void ServantHandle::heartbeat()
+{
+	struct timeval tv; 
+    ::gettimeofday(&tv, NULL);
+    
+	time_t fcur = tv.tv_sec;
+
+	map<string, TC_EpollServer::BindAdapterPtr>::iterator it;
+
+    map<string, TC_EpollServer::BindAdapterPtr>& adapters = _handleGroup->adapters;
+
+	for (it = adapters.begin(); it != adapters.end(); ++it)
+	{
+		if (abs(fcur - it->second->getHeartBeatTime()) > HEART_BEAT_INTERVAL)
+		{
+			it->second->setHeartBeatTime(fcur);
+			TARS_KEEPALIVE(it->second->getName());
+		}
+
+	}
 }
 
 }

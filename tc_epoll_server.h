@@ -131,6 +131,8 @@ public:
         virtual void handleImp();
 
 		virtual void handle(const tagRecvData &stRecvData) = 0;
+
+		virtual void heartbeat() {}
     };
 	
 	class BindAdapter : public TC_ThreadLock
@@ -174,6 +176,10 @@ public:
 
 		string getHandleGroupName() const;
 
+		void setHeartBeatTime(time_t t);
+
+		time_t getHeartBeatTime() const;
+
 	public:
 	
         //TC_ThreadLock   monitor;
@@ -198,6 +204,8 @@ public:
 		string         _handleGroupName;
 
 		size_t         _iHandleNum;
+
+		volatile time_t          _iHeartBeatTime;
  
 	};
 

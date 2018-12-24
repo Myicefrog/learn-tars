@@ -37,6 +37,7 @@ class AsyncProcThread;
 typedef shared_ptr<ServantProxy> ServantPrx;
 typedef shared_ptr<ServantProxyCallback> ServantProxyCallbackPtr;
 typedef shared_ptr<ObjectProxyFactory> ObjectProxyFactoryPtr;
+typedef shared_ptr<Communicator> CommunicatorPtr;
 
 struct TarsException : public TC_Exception
 {

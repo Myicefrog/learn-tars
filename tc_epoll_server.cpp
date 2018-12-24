@@ -890,6 +890,8 @@ void TC_EpollServer::Handle::handleImp()
 			_handleGroup->monitor.timedWait(100);
         }
 
+		heartbeat();
+
 		//BindAdapterPtr& adapters = _lsPtr;
     	tagRecvData* recv = NULL;
 
@@ -974,6 +976,7 @@ TC_EpollServer::BindAdapter::BindAdapter(TC_EpollServer *pEpollServer)
 , _handleGroup(NULL)
 , _handleGroupName("")
 , _iHandleNum(0)
+, _iHeartBeatTime(0)
 {
 }
 
@@ -1070,6 +1073,18 @@ void TC_EpollServer::BindAdapter::setHandleGroupName(const string& handleGroupNa
 string TC_EpollServer::BindAdapter::getHandleGroupName() const
 {
     return _handleGroupName;
+}
+
+void TC_EpollServer::BindAdapter::setHeartBeatTime(time_t t)
+{
+    TC_ThreadLock::Lock lock(*this);
+
+    _iHeartBeatTime = t;
+}
+
+time_t TC_EpollServer::BindAdapter::getHeartBeatTime() const
+{
+    return _iHeartBeatTime;
 }
 
 }

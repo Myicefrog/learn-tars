@@ -1,9 +1,21 @@
 #include "Application.h"
+#include "TarsNodeF.h"
+#include "AdminServant.h"
 
 namespace tars
 {
 
 TC_EpollServerPtr               Application::_epollServer  = NULL;
+CommunicatorPtr                 Application::_communicator = NULL;
+
+std::string ServerConfig::Application;      //应用名称
+std::string ServerConfig::ServerName;       //服务名称,一个服务名称含一个或多个服务标识
+std::string ServerConfig::Node;             //本机node地址
+
+std::string ServerConfig::adapterName;
+std::string ServerConfig::servantName;
+std::string ServerConfig::adapterIp;
+int         ServerConfig::adapterPort;
 
 bool        ServerConfig::OpenCoroutine;    //是否启用协程处理方式
 size_t      ServerConfig::CoroutineMemSize; //协程占用内存空间的最大大小
@@ -74,6 +86,8 @@ void Application::waitForQuit()
 void Application::main(int argc, char *argv[])
 {
 
+	initializeClient();
+
 	initializeServer();
 
 	vector<TC_EpollServer::BindAdapterPtr> adapters;
@@ -94,9 +108,24 @@ void Application::main(int argc, char *argv[])
 
 }
 
+void Application::initializeClient()
+{
+	CommunicatorPtr _commptr = make_shared<Communicator>();
+
+	_communicator = _commptr;
+}
+
 void Application::initializeServer()
 {
+/*
+	ServerConfig::Application  = "TestApp";
+
+	ServerConfig::ServerName   = "HelloServer";
+
+	ServerConfig::Node         = "127.0.0.1:19386";
+
 	ServerConfig::OpenCoroutine = true;
+*/
 
 	ServerConfig::CoroutineMemSize = 1073741824;
 
@@ -115,6 +144,26 @@ void Application::initializeServer()
 	}
 
 	_epollServer = make_shared<TC_EpollServer>(iNetThreadNum);
+
+	TarsNodeFHelper::getInstance()->setNodeInfo(_communicator, ServerConfig::Node, ServerConfig::Application, ServerConfig::ServerName);
+
+	ServantHelperManager::getInstance()->addServant<AdminServant>("AdminObj");
+
+	ServantHelperManager::getInstance()->setAdapterServant("AdminAdapter", "AdminObj");
+
+    TC_EpollServer::BindAdapterPtr lsPtr = make_shared<TC_EpollServer::BindAdapter>(_epollServer.get());
+
+    lsPtr->setName("AdminAdapter");
+
+	lsPtr->setEndpoint("127.0.0.1", 20001);
+
+	lsPtr->setHandleGroupName("AdminAdapter");
+
+	lsPtr->setHandleNum(1);
+
+	lsPtr->setHandle<ServantHandle>();
+
+	 _epollServer->bind(lsPtr);
 	
 }
 
@@ -122,6 +171,7 @@ void Application::bindAdapter(vector<TC_EpollServer::BindAdapterPtr>& adapters)
 {
 	int handleNum = 4;
 	
+/*
 	string ip = "127.0.0.1";
 
 	int port = 9877;
@@ -129,20 +179,21 @@ void Application::bindAdapter(vector<TC_EpollServer::BindAdapterPtr>& adapters)
 	string adapterName = "TestApp.HelloServer.HelloObjAdapter";
 
 	string servantName = "TestApp.HelloServer.HelloObj";
+*/
 
 ///////////////////////////////////////////////////////////////
 
-	ServantHelperManager::getInstance()->setAdapterServant(adapterName, servantName);
+	ServantHelperManager::getInstance()->setAdapterServant(ServerConfig::adapterName, ServerConfig::servantName);
 
 ///////////////////////////////////////////////////////////////
 
 	TC_EpollServer::BindAdapterPtr bindAdapter = make_shared<TC_EpollServer::BindAdapter>(_epollServer.get());
 
-	bindAdapter->setName(adapterName);
+	bindAdapter->setName(ServerConfig::adapterName);
 
-	bindAdapter->setEndpoint(ip,port);
+	bindAdapter->setEndpoint(ServerConfig::adapterIp, ServerConfig::adapterPort);
 
-	bindAdapter->setHandleGroupName(adapterName);
+	bindAdapter->setHandleGroupName(ServerConfig::adapterName);
 
 	bindAdapter->setHandleNum(handleNum);
 
