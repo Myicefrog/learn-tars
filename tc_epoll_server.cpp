@@ -185,6 +185,8 @@ int TC_EpollServer::NetThread::Connection::recv(recv_queue::queue_type &o)
 
         iBytesReceived = ::read(_sock.getfd(), (void*)buffer, sizeof(buffer));
 
+		cout<<"Connection::recv iBytesReceived is "<<iBytesReceived<<" buffer is "<<buffer<<endl;
+
         if (iBytesReceived < 0)
         {
             if(errno == EAGAIN)
@@ -195,12 +197,14 @@ int TC_EpollServer::NetThread::Connection::recv(recv_queue::queue_type &o)
             else
             {
                 //客户端主动关闭
+				cout<<"client close itself"<<endl;
                 return -1;
             }
         }
         else if( iBytesReceived == 0)
         {
             //客户端主动关闭
+			cout<<"client close itself---1"<<endl;
             return -1;
         }
 
@@ -637,6 +641,7 @@ void TC_EpollServer::NetThread::processNet(const epoll_event &ev)
 
 		if(ret < 0)
 		{
+			cout<<"NetThread::processNet delConnection"<<endl;
 			delConnection(cPtr,true,EM_CLIENT_CLOSE);
 			return;
 		}

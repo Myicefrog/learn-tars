@@ -31,6 +31,11 @@ struct ServerConfig
 	static std::string servantName;
 	static std::string adapterIp;
 	static int         adapterPort;
+
+	static std::string adapterName1;
+	static std::string servantName1;
+	static std::string adapterIp1;
+	static int         adapterPort1;
 };
 
 class Application

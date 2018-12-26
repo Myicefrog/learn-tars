@@ -204,13 +204,23 @@ void ServantHandle::handleRequest()
 
 					stRecvData.adapter = adapter;
 
-					uint32_t iRet = _coroSched->createCoroutine(std::bind(&ServantHandle::handleRecvData, this, recv));
-
-					if(iRet == 0)
+					if(stRecvData.isClosed)
 					{
+						cout<<"give info to real buisiness to close"<<endl;
 						delete recv;
 						recv = NULL;
-					} 
+					}
+					else
+					{
+
+						uint32_t iRet = _coroSched->createCoroutine(std::bind(&ServantHandle::handleRecvData, this, recv));
+
+						if(iRet == 0)
+						{
+							delete recv;
+							recv = NULL;
+						} 
+					}
 				}
 				else
 				{

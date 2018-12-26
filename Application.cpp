@@ -17,6 +17,11 @@ std::string ServerConfig::servantName;
 std::string ServerConfig::adapterIp;
 int         ServerConfig::adapterPort;
 
+std::string ServerConfig::adapterName1;
+std::string ServerConfig::servantName1;
+std::string ServerConfig::adapterIp1;
+int         ServerConfig::adapterPort1;
+
 bool        ServerConfig::OpenCoroutine;    //是否启用协程处理方式
 size_t      ServerConfig::CoroutineMemSize; //协程占用内存空间的最大大小
 uint32_t    ServerConfig::CoroutineStackSize;   //每个协程的栈大小(默认128k)
@@ -185,6 +190,7 @@ void Application::bindAdapter(vector<TC_EpollServer::BindAdapterPtr>& adapters)
 
 	ServantHelperManager::getInstance()->setAdapterServant(ServerConfig::adapterName, ServerConfig::servantName);
 
+
 ///////////////////////////////////////////////////////////////
 
 	TC_EpollServer::BindAdapterPtr bindAdapter = make_shared<TC_EpollServer::BindAdapter>(_epollServer.get());
@@ -197,11 +203,33 @@ void Application::bindAdapter(vector<TC_EpollServer::BindAdapterPtr>& adapters)
 
 	bindAdapter->setHandleNum(handleNum);
 
+
 ////////////////////////////////////////////////////////////////
 
 	_epollServer->bind(bindAdapter);
 
 	adapters.push_back(bindAdapter);
+
+/////////////////////////////////////////////////////////////////
+
+	if( ServerConfig::servantName1 != "")
+	{
+		ServantHelperManager::getInstance()->setAdapterServant(ServerConfig::adapterName1, ServerConfig::servantName1);
+
+		TC_EpollServer::BindAdapterPtr bindAdapter1 = make_shared<TC_EpollServer::BindAdapter>(_epollServer.get());
+
+		bindAdapter1->setName(ServerConfig::adapterName1);
+
+		bindAdapter1->setEndpoint(ServerConfig::adapterIp1, ServerConfig::adapterPort1);
+
+		bindAdapter1->setHandleGroupName(ServerConfig::adapterName1);
+
+		bindAdapter1->setHandleNum(handleNum);
+
+		_epollServer->bind(bindAdapter1);
+
+		adapters.push_back(bindAdapter1);
+	}
 }
 
 void Application::setHandle(TC_EpollServer::BindAdapterPtr& adapter)

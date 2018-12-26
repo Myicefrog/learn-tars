@@ -62,5 +62,8 @@ int main()
 	}
 
 	cout<<"msg->response is "<<msg->response<<endl;
+
+	getchar();	
+
 	return 0;
 }
