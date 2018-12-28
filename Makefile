@@ -15,6 +15,7 @@ TARS_CPP_SERVANT_INC_DIR = ${PWD}/servant/servant
 
 TARS_CPP_FRAME_WORK_DIR = ${PWD}/framework
 TARS_CPP_NODE_SERVER_DIR = ${TARS_CPP_FRAME_WORK_DIR}/NodeServer
+TARS_CPP_ADMINREGISTRY_SERVER_DIR = ${TARS_CPP_FRAME_WORK_DIR}/AdminRegistryServer
 
 TARS_CPP_EXAMPLE_DIR = ${PWD}/examples
 
@@ -103,11 +104,36 @@ NODE_SERVER_CLIENT_SRC = ${TARS_CPP_NODE_SERVER_DIR}/tar_client_NodeServer.cpp
 NODE_SERVER_CLIENT_OBJ = ${patsubst %.cpp, %.o, ${NODE_SERVER_CLIENT_SRC}}
 
 #----------------------------------------------------------------
+# AdminRegistryServer
+#----------------------------------------------------------------
+ADMINREGISTRY_SERVER_SRC = ${TARS_CPP_ADMINREGISTRY_SERVER_DIR}/AdminRegistryImp.cpp \
+	${TARS_CPP_ADMINREGISTRY_SERVER_DIR}/AdminRegistryServer.cpp
+
+ADMINREGISTRY_SERVER_INC = ${TARS_CPP_SERVANT_INC} \
+	${TARS_CPP_UTIL_INC} \
+	-I${TARS_CPP_ADMINREGISTRY_SERVER_DIR}
+
+ADMINREGISTRY_SERVER_OBJ = ${patsubst %.cpp, %.o, ${ADMINREGISTRY_SERVER_SRC}}
+
+ADMINREGISTRY_CLIENT_SRC = ${TARS_CPP_ADMINREGISTRY_SERVER_DIR}/tar_client_AdminRegServer.cpp
+
+ADMINREGISTRY_CLIENT_OBJ = ${patsubst %.cpp, %.o, ${ADMINREGISTRY_CLIENT_SRC}}
+
+
+#----------------------------------------------------------------
 # Build Target
 #----------------------------------------------------------------
 
-all: HelloServer HelloServer-client HelloServer-client-async NodeServer NodeServer-client
+all: HelloServer HelloServer-client HelloServer-client-async NodeServer NodeServer-client AdminRegServer AdminRegServer-client
 .PHONY : all
+
+AdminRegServer: ${ADMINREGISTRY_SERVER_OBJ} ${TARS_CPP_UTIL_OBJ} ${TARS_CPP_SERVANT_OBJ}
+	${CXX} ${ADMINREGISTRY_SERVER_OBJ} ${TARS_CPP_UTIL_OBJ} ${TARS_CPP_SERVANT_OBJ} ${TARS_COROUTINE} -o $@ ${LD_OPTS} ${LD_LIBS} -g
+	@echo "Compile AdminRegServer done."
+
+AdminRegServer-client: ${ADMINREGISTRY_CLIENT_OBJ} ${TARS_CPP_UTIL_OBJ} ${TARS_CPP_SERVANT_OBJ}
+	${CXX} ${ADMINREGISTRY_CLIENT_OBJ} ${TARS_CPP_UTIL_OBJ} ${TARS_CPP_SERVANT_OBJ} ${TARS_COROUTINE} -o $@ ${LD_OPTS} ${LD_LIBS} -g
+	@echo "Compile AdminRegServer-client done."
 
 HelloServer: ${HELLO_SERVER_OBJ} ${TARS_CPP_UTIL_OBJ} ${TARS_CPP_SERVANT_OBJ}
 	${CXX} ${HELLO_SERVER_OBJ} ${TARS_CPP_UTIL_OBJ} ${TARS_CPP_SERVANT_OBJ} ${TARS_COROUTINE} -o $@ ${LD_OPTS} ${LD_LIBS} -g
@@ -141,6 +167,14 @@ ${TARS_CPP_SERVANT_OBJ}:%.o:%.cpp
 	@echo "Compiling $< ==> $@"
 	${CXX} ${CFLAGS} ${TARS_CPP_SERVANT_INC} ${TARS_CPP_UTIL_INC} -c $< -o $@
 
+${ADMINREGISTRY_SERVER_OBJ}:%.o:%.cpp
+	@echo "Compiling $< ==> $@"
+	${CXX} ${CFLAGS} ${ADMINREGISTRY_SERVER_INC}  -c $< -o $@
+
+${ADMINREGISTRY_CLIENT_OBJ}:%.o:%.cpp
+	@echo "Compiling $< ==> $@"
+	${CXX} ${CFLAGS} ${ADMINREGISTRY_SERVER_INC}  -c $< -o $@
+
 ${HELLO_SERVER_OBJ}:%.o:%.cpp
 	@echo "Compiling $< ==> $@"
 	${CXX} ${CFLAGS} ${HELLO_SERVER_INC} -c $< -o $@	
@@ -172,4 +206,6 @@ clean:
 	@rm -f ${HELLO_SERVER_CLIENT_OBJ}
 	@rm -f ${HELLO_SERVER_CLIENT_ASYNC_OBJ}
 	@rm -f ${NODE_SERVER_CLIENT_OBJ}
+	@rm -f ${ADMINREGISTRY_SERVER_OBJ}
+	@rm -f ${ADMINREGISTRY_CLIENT_OBJ}
 	@echo "Clean object files done."

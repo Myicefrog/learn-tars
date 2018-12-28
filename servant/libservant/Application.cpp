@@ -36,6 +36,11 @@ Application::~Application()
     terminate();
 }
 
+CommunicatorPtr& Application::getCommunicator()
+{
+    return _communicator;
+}
+
 TC_EpollServerPtr& Application::getEpollServer()
 {
     return _epollServer;

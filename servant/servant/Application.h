@@ -50,6 +50,8 @@ public:
 
 	void waitForShutdown();
 
+	static CommunicatorPtr& getCommunicator();
+
     static TC_EpollServerPtr& getEpollServer();
 
 	static void terminate();
