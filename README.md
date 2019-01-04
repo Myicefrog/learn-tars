@@ -2,11 +2,11 @@
 
 # 前言
 
-这个将项目里，我试图从最基本的epoll模型开始，一步步向官方Tars RPC靠拢，尽量记录下关键的结点。之所以选择这样做，是亲手实现一遍代码比单纯调试代码印象更为深刻。
+这个将项目试图从最基本的epoll模型开始，一步步向官方Tars RPC靠拢，尽量记录下关键的结点。之所以选择这样做，是亲手实现一遍代码比单纯调试代码印象更为深刻。
 
-我选择将这个过程分享出来，是感觉这份笔记对于想短时间了解Tars源码主要逻辑脉络的人来说，会有一些帮助
+选择将这个过程分享出来，是感觉这份笔记对于想短时间了解Tars源码主要逻辑脉络的人来说，会有一些帮助
 
-我使用的系统环境：
+使用的系统环境：
 
 * 操作系统版本：Ubuntu 18.04.1 LTS (GNU/Linux 4.15.0-42-generic x86_64)
 
@@ -33,6 +33,12 @@
 [4 进一步完善RPC Client（同步）](https://github.com/Myicefrog/learn-tars/wiki/4-%E8%BF%9B%E4%B8%80%E6%AD%A5%E5%AE%8C%E5%96%84RPC-Client)
 
 [5 进一步完善RPC Client（异步）](https://github.com/Myicefrog/learn-tars/wiki/5-%E8%BF%9B%E4%B8%80%E6%AD%A5%E5%AE%8C%E5%96%84RPC-Client%EF%BC%88%E5%BC%82%E6%AD%A5%EF%BC%89)
+
+[6 进一步完善RPC Server](https://github.com/Myicefrog/learn-tars/wiki/6-%E8%BF%9B%E4%B8%80%E6%AD%A5%E5%AE%8C%E5%96%84RPC-Server)
+
+[7 Framework篇：NodeServer](https://github.com/Myicefrog/learn-tars/wiki/7-Framework%E7%AF%87%EF%BC%9ANodeServer)
+
+[8 Framework篇：AdminRegistryServer](https://github.com/Myicefrog/learn-tars/wiki/8-Framework%E7%AF%87%EF%BC%9AAdminRegistryServer)
 
 [更多](https://github.com/Myicefrog/learn-tars/wiki)
 
