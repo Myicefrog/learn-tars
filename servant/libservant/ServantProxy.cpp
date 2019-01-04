@@ -275,6 +275,7 @@ void ServantProxy::selectNetThreadInfo(ServantProxyThreadData * pSptd, ObjectPro
     }
     else
     {
+		cout<<"pSptd->_netThreadSeq is "<<pSptd->_netThreadSeq<<endl;
         if(pSptd->_netThreadSeq >= 0)
         {
             //网络线程发起的请求
